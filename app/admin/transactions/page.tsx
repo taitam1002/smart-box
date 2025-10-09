@@ -1,10 +1,11 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { mockOrders, mockLockers } from "@/lib/mock-data"
-import type { OrderStatus } from "@/lib/types"
+import { getTransactions, getLockers } from "@/lib/firestore-actions"
+import type { OrderStatus, Order, Locker } from "@/lib/types"
 
 const statusColors: Record<OrderStatus, string> = {
   pending: "bg-yellow-500",
@@ -21,6 +22,40 @@ const statusLabels: Record<OrderStatus, string> = {
 }
 
 export default function TransactionsPage() {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [lockers, setLockers] = useState<Locker[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [ordersData, lockersData] = await Promise.all([
+          getTransactions(),
+          getLockers()
+        ])
+        setOrders(ordersData)
+        setLockers(lockersData)
+      } catch (error) {
+        console.error("Lỗi tải dữ liệu giao dịch:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-[#2E3192]">Lịch sử giao dịch</h2>
+          <p className="text-muted-foreground mt-1">Đang tải dữ liệu...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -44,7 +79,7 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockOrders.map((order) => (
+              {orders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.orderCode || "N/A"}</TableCell>
                   <TableCell>
@@ -62,7 +97,7 @@ export default function TransactionsPage() {
                   <TableCell>
                     <Badge variant="outline">{order.senderType === "shipper" ? "Shipper" : "Người gửi"}</Badge>
                   </TableCell>
-                  <TableCell>{mockLockers.find((l) => l.id === order.lockerId)?.lockerNumber}</TableCell>
+                  <TableCell>{lockers.find((l) => l.id === order.lockerId)?.lockerNumber}</TableCell>
                   <TableCell>
                     <Badge className={`${statusColors[order.status]} text-white`}>{statusLabels[order.status]}</Badge>
                   </TableCell>

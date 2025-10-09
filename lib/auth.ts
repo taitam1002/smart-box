@@ -4,7 +4,7 @@ import type { User } from "./types"
 import { db, auth } from "./firebase"
 import { collection, query, where, getDocs, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth"
-import { createLogoutNotification, createProfileUpdateNotification } from "./firestore-actions"
+import { createLogoutNotification, createProfileUpdateNotification, updateLastLogin } from "./firestore-actions"
 
 export async function login(email: string, password: string): Promise<User | null> {
   try {
@@ -29,28 +29,33 @@ export async function login(email: string, password: string): Promise<User | nul
     }
     const data = profileSnap.data() as Omit<User, "id">
     const userData: User = { id: uid, ...data }
+    
+    // Kiểm tra tài khoản có bị khóa không
+    if (!userData.isActive) {
+      // Đăng xuất ngay lập tức nếu tài khoản bị khóa
+      await signOut(auth)
+      throw new Error("Tài khoản của bạn đang bị khóa do quá lâu không truy cập. Vui lòng liên hệ quản trị viên để được hỗ trợ.")
+    }
+    
+    // Cập nhật lần đăng nhập cuối
+    await updateLastLogin(uid)
+    
     localStorage.setItem("currentUser", JSON.stringify(userData))
     return userData
-  } catch (error) {
+  } catch (error: any) {
     console.error("Lỗi đăng nhập:", error)
+    
+    // Nếu là lỗi tài khoản bị khóa, throw lại để hiển thị thông báo
+    if (error.message && error.message.includes("bị khóa")) {
+      throw error
+    }
+    
     return null
   }
 }
 
 export async function logout() {
   try {
-    const currentUser = getCurrentUser()
-    
-    // Tạo thông báo đăng xuất nếu có user
-    if (currentUser) {
-      await createLogoutNotification({
-        id: currentUser.id,
-        name: currentUser.name,
-        email: currentUser.email,
-        role: currentUser.role,
-      })
-    }
-    
     // Đăng xuất khỏi Firebase Auth
     await signOut(auth)
     

@@ -104,8 +104,8 @@ export default function HistoryPage() {
                 className={
                   `border transition-colors hover:shadow-sm ` +
                   (order.status === "delivered"
-                    ? "border-blue-200 bg-blue-50/40"
-                    : "border-green-200 bg-green-50/40")
+                    ? "border-blue-500 bg-blue-50/40"
+                    : "border-green-500 bg-green-50/40")
                 }
               >
                 <CardHeader className="pb-3">
@@ -130,24 +130,24 @@ export default function HistoryPage() {
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <div className="rounded-lg border bg-white/90 p-4 border-gray-200">
+                    <div className="rounded-lg border bg-white/90 p-4 border-gray-300">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Loại gửi hàng</p>
                       <p className="mt-1 font-medium">
                         {order.senderType === "shipper" ? "Shipper" : "Người gửi bình thường"}
                       </p>
                     </div>
                     {order.orderCode ? (
-                      <div className="rounded-lg border bg-white/90 p-4 border-gray-200">
+                      <div className="rounded-lg border bg-white/90 p-4 border-gray-300">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Mã đơn hàng</p>
                         <p className="mt-1 font-medium">{order.orderCode}</p>
                       </div>
                     ) : (
-                      <div className="rounded-lg border bg-white/90 p-4 border-gray-200">
+                      <div className="rounded-lg border bg-white/90 p-4 border-gray-300">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Số tủ</p>
                         <p className="mt-1 font-medium">{locker?.lockerNumber}</p>
                       </div>
                     )}
-                    <div className="rounded-lg border bg-white/90 p-4 border-gray-200">
+                    <div className="rounded-lg border bg-white/90 p-4 border-gray-300">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Thời gian gửi</p>
                       <p className="mt-1 font-medium">
                         {order.deliveredAt
@@ -162,7 +162,7 @@ export default function HistoryPage() {
                       </p>
                     </div>
                     {order.pickedUpAt && (
-                      <div className="rounded-lg border bg-white/90 p-4 border-gray-200">
+                      <div className="rounded-lg border bg-white/90 p-4 border-gray-300">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Thời gian lấy hàng</p>
                         <p className="mt-1 font-medium">
                           {new Date(order.pickedUpAt).toLocaleString("vi-VN", {

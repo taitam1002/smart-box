@@ -62,7 +62,7 @@ export async function createLogoutNotification(user: { id: string; name: string;
   const notification = {
     type: "info" as const,
     message: `Người dùng ${user.name} (${user.email}) - ${user.role === 'admin' ? 'Quản trị viên' : 'Khách hàng'} đã đăng xuất khỏi hệ thống`,
-    customerId: user.id,
+    // Không có customerId để admin có thể thấy
     isRead: false,
     createdAt: new Date(),
   };
@@ -74,14 +74,76 @@ export async function createProfileUpdateNotification(user: { id: string; name: 
   const notification = {
     type: "customer_action" as const,
     message: `Người dùng ${user.name} (${user.email}) - ${user.role === 'admin' ? 'Quản trị viên' : 'Khách hàng'} đã cập nhật thông tin: ${changes.join(', ')}`,
-    customerId: user.id,
+    // Không có customerId để admin có thể thấy
     isRead: false,
     createdAt: new Date(),
   };
   return await saveNotification(notification);
 }
 
+// Sửa lại thông báo cũ để admin có thể thấy
+export async function fixLegacyNotifications() {
+  try {
+    const notificationsQuery = query(collection(db, "notifications"))
+    const querySnapshot = await getDocs(notificationsQuery)
+    
+    const updatePromises = querySnapshot.docs.map(async (docSnap) => {
+      const data = docSnap.data()
+      // Nếu thông báo có customerId nhưng là thông báo hệ thống dành cho admin
+      // LƯU Ý: KHÔNG đụng vào các thông báo dành riêng cho khách hàng như
+      // "Bạn đã gửi hàng thành công ..." để tránh hiển thị ở trang admin.
+      const msg: string = String(data.message || "")
+      const isCustomerOnly = msg.startsWith("Bạn đã gửi hàng") || msg.startsWith("Bạn đã giữ hàng")
+
+      if (data.customerId && !isCustomerOnly && (
+        msg.includes("báo lỗi") || 
+        msg.includes("giữ hàng") ||
+        msg.includes("đăng xuất") ||
+        msg.includes("cập nhật thông tin")
+      )) {
+        const notificationRef = doc(db, "notifications", docSnap.id)
+        await updateDoc(notificationRef, {
+          customerId: null, // Xóa customerId để admin có thể thấy
+          lastUpdated: new Date()
+        })
+        console.log(`✅ Đã sửa thông báo: ${docSnap.id}`)
+      }
+    })
+    
+    await Promise.all(updatePromises)
+    console.log("✅ Đã sửa xong thông báo cũ")
+  } catch (error) {
+    console.error("Lỗi sửa thông báo cũ:", error)
+  }
+}
+
+// Khôi phục các thông báo gửi-hàng của khách (nếu lỡ bị migrate sai trước đó)
+export async function restoreCustomerDeliveryNotifications() {
+  try {
+    const notificationsQuery = query(collection(db, "notifications"))
+    const querySnapshot = await getDocs(notificationsQuery)
+    const updates: Promise<any>[] = []
+
+    for (const docSnap of querySnapshot.docs) {
+      const data: any = docSnap.data()
+      const msg: string = String(data.message || "")
+      const wasCustomerOnly = msg.startsWith("Bạn đã gửi hàng") || msg.startsWith("Bạn đã giữ hàng")
+      if (wasCustomerOnly && !data.customerId && data.orderId && data.lockerId) {
+        // Không thể suy luận customerId nếu không lưu; bỏ qua nếu thiếu
+        // Chỉ gắn cờ riêng tư để admin dropdown không hiển thị (fallback)
+        const ref = doc(db, "notifications", docSnap.id)
+        updates.push(updateDoc(ref, { privateToCustomer: true, lastUpdated: new Date() }))
+      }
+    }
+    await Promise.all(updates)
+    console.log("✅ Đã khôi phục phạm vi hiển thị cho thông báo gửi-hàng của khách")
+  } catch (e) {
+    console.error("Lỗi khôi phục thông báo khách:", e)
+  }
+}
+
 // Utility: deduplicate lockers by lockerNumber (keep canonical doc id == lockerNumber)
+// CHỈ xử lý duplicate, KHÔNG reset dữ liệu hiện có
 export async function dedupeLockers(): Promise<{ removed: number }> {
   const snap = await getDocs(collection(db, "lockers"))
   const groups = new Map<string, Array<{ id: string; data: any }>>()
@@ -94,21 +156,28 @@ export async function dedupeLockers(): Promise<{ removed: number }> {
 
   let removed = 0
   for (const [key, items] of groups.entries()) {
-    if (!key) continue
+    if (!key || items.length <= 1) continue // Chỉ xử lý khi có duplicate
+    
     const canonicalId = key
-    // Ensure canonical doc exists with correct payload
+    // Tìm document có ID trùng với lockerNumber (canonical)
     const keep = items.find((x) => x.id.toUpperCase() === canonicalId) || items[0]
-    await setDoc(doc(db, "lockers", canonicalId), {
-      ...keep.data,
-      lockerNumber: canonicalId,
-      lastUpdated: new Date(),
-    })
-    // Delete others
+    
+    // Chỉ cập nhật nếu cần thiết, giữ nguyên dữ liệu hiện có
+    if (keep.id.toUpperCase() !== canonicalId) {
+      await setDoc(doc(db, "lockers", canonicalId), {
+        ...keep.data,
+        lockerNumber: canonicalId,
+        lastUpdated: new Date(),
+      })
+    }
+    
+    // Xóa các duplicate (không phải canonical)
     for (const it of items) {
       if (it.id.toUpperCase() !== canonicalId) {
         try {
           await deleteDoc(doc(db, "lockers", it.id))
           removed += 1
+          console.log(`🗑️ Xóa duplicate tủ: ${it.id} (giữ lại ${canonicalId})`)
         } catch {}
       }
     }
@@ -121,7 +190,14 @@ export async function dedupeLockers(): Promise<{ removed: number }> {
 // Lấy tất cả người dùng
 export async function getUsers(): Promise<User[]> {
   const querySnapshot = await getDocs(collection(db, "users"));
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+  return querySnapshot.docs.map(doc => {
+    const data = doc.data()
+    return { 
+      id: doc.id, 
+      ...data,
+      createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt || new Date(),
+    } as User
+  });
 }
 
 // Tìm user theo email (trả về kèm id)
@@ -136,16 +212,59 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 // Lấy tất cả tủ thông minh
 export async function getLockers(): Promise<Locker[]> {
   const querySnapshot = await getDocs(collection(db, "lockers"));
-  return querySnapshot.docs.map((docSnap) => {
-    const data: any = docSnap.data()
-    return {
-      ...data,
-      id: docSnap.id, // ensure Firestore doc id wins over any stored id field
-      status: typeof data.status === "string" ? data.status.trim() : data.status,
-      lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber,
-      lastUpdated: data?.lastUpdated?.toDate ? data.lastUpdated.toDate() : data.lastUpdated,
-    } as Locker
-  })
+  const lockers = querySnapshot.docs
+    .map((docSnap) => {
+      const data: any = docSnap.data()
+      return {
+        ...data,
+        id: docSnap.id, // ensure Firestore doc id wins over any stored id field
+        status: typeof data.status === "string" ? data.status.trim() : data.status,
+        lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber,
+        lastUpdated: data?.lastUpdated?.toDate ? data.lastUpdated.toDate() : data.lastUpdated,
+      } as Locker
+    })
+    .filter((locker) => locker && locker.lockerNumber) // Lọc bỏ các tủ không hợp lệ
+
+  // Kiểm tra và tạo lại tủ A1-A6 nếu thiếu
+  const requiredLockers = ["A1", "A2", "A3", "A4", "A5", "A6"]
+  const existingNumbers = lockers.map(l => l.lockerNumber)
+  const missingLockers = requiredLockers.filter(num => !existingNumbers.includes(num))
+  
+  if (missingLockers.length > 0) {
+    console.log(`⚠️ Thiếu ${missingLockers.length} tủ, đang tạo lại...`)
+    for (const lockerNumber of missingLockers) {
+      try {
+        const size = lockerNumber === "A1" || lockerNumber === "A4" ? "small" : 
+                   lockerNumber === "A2" || lockerNumber === "A5" ? "medium" : "large"
+        await setDoc(doc(db, "lockers", lockerNumber), {
+          lockerNumber,
+          status: "available",
+          size,
+          lastUpdated: new Date()
+        })
+        console.log(`✅ Đã tạo lại tủ ${lockerNumber}`)
+      } catch (error) {
+        console.error(`❌ Lỗi tạo tủ ${lockerNumber}:`, error)
+      }
+    }
+    
+    // Lấy lại danh sách tủ sau khi tạo
+    const newQuerySnapshot = await getDocs(collection(db, "lockers"));
+    return newQuerySnapshot.docs
+      .map((docSnap) => {
+        const data: any = docSnap.data()
+        return {
+          ...data,
+          id: docSnap.id,
+          status: typeof data.status === "string" ? data.status.trim() : data.status,
+          lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber,
+          lastUpdated: data?.lastUpdated?.toDate ? data.lastUpdated.toDate() : data.lastUpdated,
+        } as Locker
+      })
+      .filter((locker) => locker && locker.lockerNumber)
+  }
+
+  return lockers
 }
 
 // Lấy tất cả giao dịch
@@ -248,17 +367,33 @@ export async function getUnreadNotifications(): Promise<Notification[]> {
 
 // ========== CÁC HÀM CẬP NHẬT DỮ LIỆU ==========
 
-// Cập nhật trạng thái tủ
+// Cập nhật thời gian tủ (chỉ cập nhật lastUpdated)
+export async function updateLockerTimestamp(lockerId: string) {
+  const lockerRef = doc(db, "lockers", lockerId);
+  await updateDoc(lockerRef, { 
+    lastUpdated: new Date() 
+  });
+  console.log(`🕐 Cập nhật thời gian tủ ${lockerId}`);
+}
+
+// Cập nhật trạng thái tủ - CHỈ cập nhật trạng thái, KHÔNG reset dữ liệu
 export async function updateLockerStatus(lockerId: string, status: string, orderId?: string) {
   const lockerRef = doc(db, "lockers", lockerId);
   const updateData: any = { 
     status, 
     lastUpdated: new Date() 
   };
+  
+  // Chỉ cập nhật currentOrderId nếu được cung cấp
   if (orderId !== undefined) {
     updateData.currentOrderId = orderId;
+  } else if (status === "available") {
+    // Khi tủ trở về trạng thái available, xóa currentOrderId
+    updateData.currentOrderId = null;
   }
+  
   await updateDoc(lockerRef, updateData);
+  console.log(`✅ Cập nhật tủ ${lockerId}: ${status}${orderId ? ` (Order: ${orderId})` : ''}`);
 }
 
 // Cập nhật trạng thái giao dịch
@@ -273,20 +408,224 @@ export async function updateTransactionStatus(transactionId: string, status: str
   await updateDoc(transactionRef, updateData);
 }
 
+// Xử lý nhận hàng - cập nhật transaction và reset tủ
+export async function pickupPackage(transactionId: string) {
+  try {
+    // Lấy thông tin transaction để biết lockerId
+    const transactionRef = doc(db, "transactions", transactionId);
+    const transactionSnap = await getDoc(transactionRef);
+    
+    if (!transactionSnap.exists()) {
+      throw new Error("Không tìm thấy giao dịch");
+    }
+    
+    const transactionData = transactionSnap.data();
+    const lockerId = transactionData.lockerId;
+    
+    // Cập nhật transaction status thành picked_up
+    await updateTransactionStatus(transactionId, "picked_up");
+    
+    // Reset tủ về trạng thái available và xóa tất cả thông tin liên quan
+    const lockerRef = doc(db, "lockers", lockerId);
+    await updateDoc(lockerRef, {
+      status: "available",
+      currentOrderId: null,
+      lastUpdated: new Date()
+    });
+    
+    console.log(`✅ Đã xử lý nhận hàng: Transaction ${transactionId}, Locker ${lockerId} đã được reset hoàn toàn`);
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Lỗi khi xử lý nhận hàng:", error);
+    throw error;
+  }
+}
+
 // Đánh dấu thông báo đã đọc
 export async function markNotificationAsRead(notificationId: string) {
   const notificationRef = doc(db, "notifications", notificationId);
   await updateDoc(notificationRef, { isRead: true });
 }
 
-// Cập nhật trạng thái báo lỗi
-export async function updateErrorReportStatus(errorId: string, status: string) {
-  const errorRef = doc(db, "errors", errorId);
-  const updateData: any = { status };
-  
-  if (status === "resolved") {
-    updateData.resolvedAt = new Date();
+// Cập nhật trạng thái người dùng
+export async function updateUserStatus(userId: string, isActive: boolean) {
+  try {
+    const userRef = doc(db, "users", userId)
+    await updateDoc(userRef, {
+      isActive: isActive,
+      lastUpdated: new Date()
+    })
+    console.log(`✅ Đã cập nhật trạng thái người dùng ${userId}: ${isActive ? 'Kích hoạt' : 'Vô hiệu hóa'}`)
+  } catch (error) {
+    console.error("Lỗi cập nhật trạng thái người dùng:", error)
+    throw error
   }
-  
-  await updateDoc(errorRef, updateData);
+}
+
+// Cập nhật lần đăng nhập cuối
+export async function updateLastLogin(userId: string) {
+  try {
+    const userRef = doc(db, "users", userId)
+    await updateDoc(userRef, {
+      lastLoginAt: new Date(),
+      lastUpdated: new Date()
+    })
+    console.log(`✅ Đã cập nhật lần đăng nhập cuối cho user ${userId}`)
+  } catch (error) {
+    console.error("Lỗi cập nhật lần đăng nhập cuối:", error)
+    throw error
+  }
+}
+
+// Cập nhật dữ liệu người dùng cũ (thêm createdAt và lastLoginAt nếu chưa có)
+export async function updateLegacyUsers() {
+  try {
+    const users = await getUsers()
+    const usersToUpdate = users.filter(user => 
+      !user.createdAt || 
+      user.createdAt.toString() === 'Invalid Date' ||
+      !user.lastLoginAt
+    )
+    
+    if (usersToUpdate.length === 0) {
+      console.log("✅ Tất cả người dùng đã có đầy đủ dữ liệu")
+      return
+    }
+    
+    const updatePromises = usersToUpdate.map(user => {
+      const userRef = doc(db, "users", user.id)
+      const updateData: any = {
+        lastUpdated: new Date()
+      }
+      
+      // Thêm createdAt nếu chưa có
+      if (!user.createdAt || user.createdAt.toString() === 'Invalid Date') {
+        updateData.createdAt = new Date("2025-01-01") // Ngày mặc định cho dữ liệu cũ
+      }
+      
+      // Thêm lastLoginAt nếu chưa có (đặt bằng createdAt hoặc ngày hiện tại)
+      if (!user.lastLoginAt) {
+        updateData.lastLoginAt = user.createdAt && user.createdAt.toString() !== 'Invalid Date' 
+          ? user.createdAt 
+          : new Date("2025-01-01")
+      }
+      
+      return updateDoc(userRef, updateData)
+    })
+    
+    await Promise.all(updatePromises)
+    console.log(`✅ Đã cập nhật dữ liệu cho ${usersToUpdate.length} người dùng`)
+  } catch (error) {
+    console.error("Lỗi cập nhật dữ liệu người dùng cũ:", error)
+  }
+}
+
+// ========== XỬ LÝ LỖI VỚI QUY TRÌNH HOÀN CHỈNH ==========
+
+// Tiếp nhận lỗi (chuyển từ pending → received)
+export async function receiveErrorReport(errorId: string, adminNotes?: string) {
+  const errorRef = doc(db, "errors", errorId);
+  await updateDoc(errorRef, {
+    status: "received",
+    processingStage: "received",
+    receivedAt: new Date(),
+    adminNotes: adminNotes || "",
+    lastUpdated: new Date()
+  });
+  console.log(`✅ Đã tiếp nhận lỗi: ${errorId}`);
+}
+
+// Bắt đầu xử lý lỗi (chuyển từ received → processing)
+export async function startProcessingError(errorId: string, adminNotes?: string) {
+  const errorRef = doc(db, "errors", errorId);
+  await updateDoc(errorRef, {
+    status: "processing",
+    processingStage: "processing",
+    processingStartedAt: new Date(),
+    adminNotes: adminNotes || "",
+    lastUpdated: new Date()
+  });
+  console.log(`🔧 Đã bắt đầu xử lý lỗi: ${errorId}`);
+}
+
+// Hoàn thành xử lý lỗi (chuyển từ processing → resolved)
+export async function resolveErrorReport(errorId: string, adminNotes?: string) {
+  const errorRef = doc(db, "errors", errorId);
+  await updateDoc(errorRef, {
+    status: "resolved",
+    processingStage: "resolved",
+    resolvedAt: new Date(),
+    adminNotes: adminNotes || "",
+    lastUpdated: new Date()
+  });
+  console.log(`✅ Đã hoàn thành xử lý lỗi: ${errorId}`);
+}
+
+// Thông báo khách hàng (chuyển từ resolved → notified)
+export async function notifyCustomerAboutErrorResolution(errorId: string, customerId: string) {
+  try {
+    // Cập nhật trạng thái lỗi
+    const errorRef = doc(db, "errors", errorId);
+    await updateDoc(errorRef, {
+      processingStage: "notified",
+      customerNotifiedAt: new Date(),
+      lastUpdated: new Date()
+    });
+
+    // Tạo thông báo cho khách hàng
+    const customerNotification = {
+      type: "info" as const,
+      message: "Lỗi bạn báo cáo đã được xử lý thành công. Cảm ơn bạn đã phản hồi!",
+      customerId: customerId,
+      isRead: false,
+      createdAt: new Date(),
+    };
+    
+    await saveNotification(customerNotification);
+    console.log(`📢 Đã thông báo khách hàng về việc xử lý lỗi: ${errorId}`);
+  } catch (error) {
+    console.error("Lỗi thông báo khách hàng:", error);
+    throw error;
+  }
+}
+
+// Đóng lỗi (chuyển từ notified → closed)
+export async function closeErrorReport(errorId: string) {
+  const errorRef = doc(db, "errors", errorId);
+  await updateDoc(errorRef, {
+    status: "closed",
+    processingStage: "notified",
+    closedAt: new Date(),
+    lastUpdated: new Date()
+  });
+  console.log(`🔒 Đã đóng lỗi: ${errorId}`);
+}
+
+// Xử lý thông báo lỗi - cập nhật trạng thái và tạo thông báo cho khách hàng
+export async function handleErrorNotification(notificationId: string, errorId: string, customerId: string) {
+  try {
+    // Cập nhật trạng thái báo lỗi thành đã xử lý
+    await resolveErrorReport(errorId, "Đã xử lý lỗi từ admin");
+    
+    // Đánh dấu thông báo đã đọc
+    await markNotificationAsRead(notificationId);
+    
+    // Tạo thông báo cho khách hàng
+    const customerNotification = {
+      type: "info" as const,
+      message: "Lỗi bạn báo cáo đã được xử lý thành công. Cảm ơn bạn đã phản hồi!",
+      customerId: customerId,
+      isRead: false,
+      createdAt: new Date(),
+    };
+    
+    await saveNotification(customerNotification);
+    
+    console.log(`✅ Đã xử lý thông báo lỗi: ${notificationId}, Error: ${errorId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Lỗi khi xử lý thông báo lỗi:", error);
+    throw error;
+  }
 }

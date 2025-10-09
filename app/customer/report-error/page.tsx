@@ -98,18 +98,20 @@ export default function ReportErrorPage() {
         lockerId: lockerId || undefined,
         description,
         status: "pending" as const,
+        processingStage: "reported" as const,
         createdAt: new Date(),
       }
 
       // Lưu báo lỗi vào Firestore
-      await saveError(newReport)
+      const errorRef = await saveError(newReport)
 
       // Gửi thông báo cho admin
       await saveNotification({
         type: "error",
         message: `Khách hàng ${user.name} báo lỗi: ${description}`,
         lockerId: lockerId || undefined,
-        customerId: user.id,
+        errorId: errorRef.id, // Thêm errorId để tracking
+        // Không có customerId để admin có thể thấy
         isRead: false,
         createdAt: new Date(),
       })
@@ -242,18 +244,41 @@ export default function ReportErrorPage() {
                             Tủ: {lockers.find((l) => l.id === report.lockerId)?.lockerNumber}
                           </p>
                         )}
-                        <p className="text-xs text-muted-foreground mt-1">{formatDate(report.createdAt)}</p>
+                        <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                          <p>Tạo: {formatDate(report.createdAt)}</p>
+                          {report.receivedAt && (
+                            <p className="text-blue-600">Tiếp nhận: {formatDate(report.receivedAt)}</p>
+                          )}
+                          {report.resolvedAt && (
+                            <p className="text-green-600">Hoàn thành: {formatDate(report.resolvedAt)}</p>
+                          )}
+                        </div>
                       </div>
                       <div>
                         {report.status === "pending" ? (
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                             <AlertCircle className="h-3 w-3" />
+                            Chờ xử lý
+                          </span>
+                        ) : report.status === "received" ? (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <AlertCircle className="h-3 w-3" />
+                            Đã tiếp nhận
+                          </span>
+                        ) : report.status === "processing" ? (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                            <AlertCircle className="h-3 w-3" />
                             Đang xử lý
                           </span>
-                        ) : (
+                        ) : report.status === "resolved" ? (
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             <CheckCircle2 className="h-3 w-3" />
                             Đã xử lý
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Đã đóng
                           </span>
                         )}
                       </div>

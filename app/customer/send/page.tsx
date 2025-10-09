@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCurrentUser } from "@/lib/auth"
 import { saveTransaction, getLockers, updateLockerStatus, saveNotification, findUserByEmail } from "@/lib/firestore-actions"
+import { SMSService } from "@/lib/sms-service"
 import { Package, Archive, Fingerprint } from "lucide-react"
 
 export default function SendPackagePage() {
@@ -72,6 +73,9 @@ export default function SendPackagePage() {
       }
       const availableLocker = lockers.find((l) => (l.status || "").trim() === "available")
       if (availableLocker) {
+        // Tạo mã 6 số cho việc lấy hàng
+        const pickupCode = SMSService.generateCode()
+        
         const newOrder: any = {
           senderId,
           senderName: user.name,
@@ -83,6 +87,8 @@ export default function SendPackagePage() {
           status: "delivered" as const,
           createdAt: new Date(),
           deliveredAt: new Date(),
+          pickupCode,
+          transactionType: "send" as const,
         }
         if (user.customerType === "shipper" && sendFormData.orderCode) {
           newOrder.orderCode = sendFormData.orderCode
@@ -98,13 +104,28 @@ export default function SendPackagePage() {
           console.error("Lỗi cập nhật trạng thái tủ:", e)
         }
 
+        // Gửi SMS cho người nhận (không chặn luồng nếu lỗi)
+        try {
+          const isShipper = user.customerType === "shipper"
+          await SMSService.sendPickupCode(
+            sendFormData.receiverPhone,
+            sendFormData.receiverName,
+            user.name,
+            pickupCode,
+            sendFormData.orderCode,
+            isShipper
+          )
+        } catch (e) {
+          console.error("Lỗi gửi SMS:", e)
+        }
+
         // Gửi thông báo cho admin (không chặn luồng nếu lỗi)
         try {
           await saveNotification({
             type: "customer_action",
             message: `${user.name} đã gửi hàng vào tủ ${availableLocker.lockerNumber}`,
             lockerId: availableLocker.id,
-            customerId: user.id,
+            // Không có customerId để admin có thể thấy
             orderId: newOrderId,
             isRead: false,
             createdAt: new Date(),
@@ -112,8 +133,23 @@ export default function SendPackagePage() {
         } catch (e) {
           console.error("Lỗi gửi thông báo:", e)
         }
+
+        // Gửi thông báo cho chính khách hàng
+        try {
+          await saveNotification({
+            type: "customer_action",
+            message: `Bạn đã gửi hàng thành công vào tủ ${availableLocker.lockerNumber}. Mã lấy hàng đã được gửi cho người nhận`,
+            customerId: senderId,
+            lockerId: availableLocker.id,
+            orderId: newOrderId,
+            isRead: false,
+            createdAt: new Date(),
+          })
+        } catch (e) {
+          console.error("Lỗi tạo thông báo cho khách hàng:", e)
+        }
         
-        alert(`Gửi hàng thành công! Tủ số: ${availableLocker.lockerNumber}`)
+        alert(`Gửi hàng thành công! Tủ số: ${availableLocker.lockerNumber}. Mã lấy hàng đã được gửi qua SMS.`)
         router.push("/customer/history")
       } else {
         alert("Không có tủ trống. Vui lòng thử lại sau.")
@@ -166,6 +202,7 @@ export default function SendPackagePage() {
               status: "delivered" as const,
               createdAt: new Date(),
               deliveredAt: new Date(),
+              transactionType: "hold" as const,
             }
             
             // Lưu giao dịch vào Firestore
@@ -184,7 +221,7 @@ export default function SendPackagePage() {
                 type: "customer_action",
                 message: `${user.name} đã giữ hàng tại tủ ${availableLocker.lockerNumber}`,
                 lockerId: availableLocker.id,
-                customerId: user.id,
+                // Không có customerId để admin có thể thấy
                 orderId: newOrderId,
                 isRead: false,
                 createdAt: new Date(),

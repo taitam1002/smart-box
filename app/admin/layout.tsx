@@ -1,15 +1,12 @@
 import type React from "react"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { AdminHeader } from "@/components/admin/admin-header"
+import { LockerAutoUpdater } from "@/components/admin/locker-auto-updater"
 import { Toaster } from "@/components/ui/sonner"
-import { ensureDefaultLockers } from "@/lib/seed-data"
+import { NotificationFixer } from "@/components/admin/notification-fixer"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  // Ensure 6 default lockers exist on layout mount
-  if (typeof window !== "undefined") {
-    // fire-and-forget; idempotent
-    ensureDefaultLockers().catch(() => {})
-  }
+  // Lockers đã được khởi tạo trong trang login, không cần gọi lại ở đây
   return (
     <div className="flex h-screen overflow-hidden">
       <AdminSidebar />
@@ -18,6 +15,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <main className="flex-1 overflow-y-auto bg-gray-50 p-6">{children}</main>
         <Toaster position="bottom-right" richColors />
       </div>
+      <LockerAutoUpdater />
+      <NotificationFixer />
     </div>
   )
 }

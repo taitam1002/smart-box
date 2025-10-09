@@ -53,8 +53,9 @@ export default function LoginPage() {
       } else {
         setError("Email hoặc mật khẩu không đúng")
       }
-    } catch (err) {
-      setError("Đã xảy ra lỗi. Vui lòng thử lại.")
+    } catch (err: any) {
+      // Hiển thị thông báo lỗi chi tiết từ auth.ts (bao gồm tài khoản bị khóa)
+      setError(err.message || "Đã xảy ra lỗi. Vui lòng thử lại.")
     } finally {
       setLoading(false)
     }

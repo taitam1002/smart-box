@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getNotifications, getLockers, markNotificationAsRead } from "@/lib/firestore-actions"
-import { AlertCircle, AlertTriangle, Info, Check, Package } from "lucide-react"
+import { getNotifications, getLockers, markNotificationAsRead, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport, getErrorReports } from "@/lib/firestore-actions"
+import { AlertCircle, AlertTriangle, Info, Check, Package, Play, CheckCircle, Bell, Lock } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
+import { toast } from "@/hooks/use-toast"
+import { useRouter } from "next/navigation"
 
 const notificationIcons = {
   error: AlertCircle,
@@ -23,6 +25,8 @@ const notificationColors = {
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [lockers, setLockers] = useState<any[]>([])
+  const [errorReports, setErrorReports] = useState<any[]>([])
+  const router = useRouter()
 
   useEffect(() => {
     // realtime notifications
@@ -40,7 +44,10 @@ export default function NotificationsPage() {
           createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
         }
       })
-      setNotifications(next)
+      
+      // Lọc chỉ thông báo hệ thống (không có customerId) và KHÔNG có cờ privateToCustomer
+      const systemNotifications = next.filter(notification => !notification.customerId && !notification.privateToCustomer)
+      setNotifications(systemNotifications)
     })
 
     // lockers can stay as one-time load
@@ -54,8 +61,31 @@ export default function NotificationsPage() {
     }
     loadLockers()
 
+    // Load error reports to track status with real-time updates
+    const errorReportsQuery = query(
+      collection(db, "errors"),
+      orderBy("createdAt", "desc")
+    )
+
+    const unsubscribeErrors = onSnapshot(errorReportsQuery, (snapshot) => {
+      const next = snapshot.docs.map((docSnap) => {
+        const data: any = docSnap.data()
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+          receivedAt: data?.receivedAt?.toDate ? data.receivedAt.toDate() : data.receivedAt,
+          processingStartedAt: data?.processingStartedAt?.toDate ? data.processingStartedAt.toDate() : data.processingStartedAt,
+          resolvedAt: data?.resolvedAt?.toDate ? data.resolvedAt.toDate() : data.resolvedAt,
+          customerNotifiedAt: data?.customerNotifiedAt?.toDate ? data.customerNotifiedAt.toDate() : data.customerNotifiedAt,
+        }
+      })
+      setErrorReports(next)
+    })
+
     return () => {
       unsubscribeNotifs()
+      unsubscribeErrors()
     }
   }, [])
 
@@ -63,8 +93,127 @@ export default function NotificationsPage() {
     try {
       await markNotificationAsRead(id)
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+      toast({
+        title: "Thành công",
+        description: "Đã đánh dấu thông báo là đã đọc",
+      })
     } catch (e) {
       console.error("Lỗi đánh dấu đã đọc:", e)
+      toast({
+        title: "Lỗi",
+        description: "Không thể đánh dấu thông báo là đã đọc",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Đánh dấu đã đọc mà không hiển thị toast
+  const markAsReadSilently = async (id: string) => {
+    try {
+      await markNotificationAsRead(id)
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+    } catch (e) {
+      console.error("Lỗi đánh dấu đã đọc:", e)
+    }
+  }
+
+  // Check if error is resolved
+  const isErrorResolved = (notification: any) => {
+    // Tìm errorId từ notification
+    let errorId = notification.errorId
+    if (!errorId && notification.message) {
+      const match = notification.message.match(/lỗi:\s*(\w+)/i)
+      if (match) {
+        errorId = match[1]
+      }
+    }
+    if (!errorId) {
+      errorId = notification.id
+    }
+    
+    const errorReport = errorReports.find(er => er.id === errorId)
+    return errorReport?.status === "resolved" || errorReport?.processingStage === "notified"
+  }
+
+  const handleProcessError = async (notification: any, action: string) => {
+    try {
+      // Tìm errorId từ message hoặc sử dụng notification.id
+      let errorId = notification.errorId
+      
+      // Nếu không có errorId, thử tìm từ message
+      if (!errorId && notification.message) {
+        // Tìm pattern "lỗi: xxx" trong message
+        const match = notification.message.match(/lỗi:\s*(\w+)/i)
+        if (match) {
+          errorId = match[1]
+        }
+      }
+      
+      // Fallback nếu vẫn không tìm thấy
+      if (!errorId) {
+        errorId = notification.id
+      }
+      
+      const customerId = notification.customerId
+      
+      if (!customerId) {
+        toast({
+          title: "Lỗi",
+          description: "Không tìm thấy thông tin khách hàng",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Thực hiện hành động tương ứng
+      switch (action) {
+        case 'receive':
+          await receiveErrorReport(errorId, "Đã tiếp nhận lỗi từ admin")
+          toast({
+            title: "Thành công",
+            description: "Đã tiếp nhận lỗi",
+          })
+          break
+        case 'process':
+          await startProcessingError(errorId, "Đang xử lý lỗi")
+          toast({
+            title: "Thành công", 
+            description: "Đã bắt đầu xử lý lỗi",
+          })
+          break
+        case 'resolve':
+          await resolveErrorReport(errorId, "Đã xử lý xong lỗi")
+          toast({
+            title: "Thành công",
+            description: "Đã hoàn thành xử lý lỗi",
+          })
+          break
+        case 'notify':
+          await notifyCustomerAboutErrorResolution(errorId, customerId)
+          toast({
+            title: "Thành công",
+            description: "Đã thông báo khách hàng",
+          })
+          break
+        case 'close':
+          await closeErrorReport(errorId)
+          toast({
+            title: "Thành công",
+            description: "Đã đóng lỗi",
+          })
+          break
+      }
+      
+      // Cập nhật UI - đánh dấu thông báo đã đọc
+      setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)))
+      
+    } catch (e) {
+      console.error("Lỗi xử lý lỗi:", e)
+      toast({
+        title: "Lỗi",
+        description: "Không thể xử lý lỗi: " + (e as Error).message,
+        variant: "destructive",
+      })
     }
   }
 
@@ -133,9 +282,55 @@ export default function NotificationsPage() {
                           </button>
                         )}
                         {notification.type === "error" && (
-                          <button className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-[#E31E24] text-white hover:bg-[#C01A1F] transition-colors">
-                            Xử lý ngay
-                          </button>
+                          isErrorResolved(notification) ? (
+                            <button
+                              onClick={async () => {
+                                // Đánh dấu thông báo đã đọc (không hiển thị toast)
+                                await markAsReadSilently(notification.id)
+                                
+                                // Tìm errorId từ notification
+                                let errorId = notification.errorId
+                                if (!errorId && notification.message) {
+                                  const match = notification.message.match(/lỗi:\s*(\w+)/i)
+                                  if (match) {
+                                    errorId = match[1]
+                                  }
+                                }
+                                if (!errorId) {
+                                  errorId = notification.id
+                                }
+                                router.push(`/admin/error-reports?errorId=${errorId}&highlight=true`)
+                              }}
+                              className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Đã xử lý
+                            </button>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                // Đánh dấu thông báo đã đọc (không hiển thị toast)
+                                await markAsReadSilently(notification.id)
+                                
+                                // Tìm errorId từ notification
+                                let errorId = notification.errorId
+                                if (!errorId && notification.message) {
+                                  const match = notification.message.match(/lỗi:\s*(\w+)/i)
+                                  if (match) {
+                                    errorId = match[1]
+                                  }
+                                }
+                                if (!errorId) {
+                                  errorId = notification.id
+                                }
+                                router.push(`/admin/error-reports?errorId=${errorId}&highlight=true`)
+                              }}
+                              className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                            >
+                              <Play className="h-4 w-4 mr-1" />
+                              Xử lý
+                            </button>
+                          )
                         )}
                       </div>
                     </div>

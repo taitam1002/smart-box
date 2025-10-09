@@ -4,20 +4,25 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserTransactions, getLockers } from "@/lib/firestore-actions"
-import { Package, Send, Clock, CheckCircle, Edit3 } from "lucide-react"
+import { getUserTransactions, getLockers, getNotifications } from "@/lib/firestore-actions"
+import { Package, Send, Clock, CheckCircle, Edit3, Bell, X } from "lucide-react"
+import { db } from "@/lib/firebase"
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore"
 
 export default function CustomerDashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [orders, setOrders] = useState<any[]>([])
   const [lockers, setLockers] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<any[]>([])
 
   useEffect(() => {
     const currentUser = getCurrentUser()
     setUser(currentUser)
     if (!currentUser) return
+    
     const load = async () => {
       try {
         const [txs, lockerList] = await Promise.all([
@@ -31,11 +36,37 @@ export default function CustomerDashboardPage() {
       }
     }
     load()
+
+    // Lắng nghe thông báo realtime cho khách hàng này
+    const notificationsQuery = query(
+      collection(db, "notifications"),
+      where("customerId", "==", currentUser.id),
+      orderBy("createdAt", "desc")
+    )
+
+    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+      const next = snapshot.docs.map((docSnap) => {
+        const data: any = docSnap.data()
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+        }
+      })
+      setNotifications(next)
+    })
+
+    return () => unsubscribe()
   }, [])
 
   const userOrders = orders
   const activeOrders = userOrders.filter((o) => o.status === "delivered")
   const completedOrders = userOrders.filter((o) => o.status === "picked_up")
+  const unreadNotifications = notifications.filter(n => !n.isRead)
+
+  const dismissNotification = (notificationId: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== notificationId))
+  }
 
   return (
     <div className="space-y-6">
@@ -54,7 +85,42 @@ export default function CustomerDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Stats */}
+      {/* Notifications */}
+      {unreadNotifications.length > 0 && (
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-green-800">
+              <Bell className="h-5 w-5" />
+              Thông báo mới
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {unreadNotifications.slice(0, 3).map((notification) => (
+                <div key={notification.id} className="flex items-start gap-3 p-3 bg-white rounded-lg border border-green-200">
+                  <div className="flex-1">
+                    <p className="text-sm text-green-800 font-medium">{notification.message}</p>
+                    <p className="text-xs text-green-600 mt-1">
+                      {new Date(notification.createdAt).toLocaleString("vi-VN")}
+                    </p>
+                    {notification.errorId && (
+                      <p className="text-xs text-green-600 mt-1">
+                        Mã lỗi: {notification.errorId}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => dismissNotification(notification.id)}
+                    className="text-green-600 hover:text-green-800 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-0 bg-blue-50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -97,13 +163,22 @@ export default function CustomerDashboardPage() {
             <div className="space-y-4">
               {userOrders.slice(0, 5).map((order) => {
                 const locker = lockers.find((l) => l.id === order.lockerId)
+                const isPickedUp = order.status === "picked_up"
                 return (
-                  <div key={order.id} className="flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
+                  <div key={order.id} className={`flex items-center justify-between p-4 rounded-lg border ${
+                    isPickedUp 
+                      ? "bg-green-50 border-green-500" 
+                      : "bg-blue-50 border-blue-500"
+                  }`}>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-medium">Người nhận: {order.receiverName}</p>
                         {order.orderCode && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{order.orderCode}</span>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            isPickedUp 
+                              ? "bg-green-400 text-green-700" 
+                              : "bg-blue-400 text-blue-700"
+                          }`}>{order.orderCode}</span>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">

@@ -53,21 +53,22 @@ export async function seedFirestoreData() {
       console.log("✅ Đã tạo tài khoản khách hàng:", userRef.id);
     }
 
-    // 3. Tạo tủ thông minh
-    const lockers: Omit<Locker, "id">[] = Array.from({ length: 24 }, (_, i) => ({
-      lockerNumber: `A${String(i + 1).padStart(2, "0")}`,
-      status: i < 5 ? "occupied" : i < 20 ? "available" : i < 22 ? "maintenance" : "error",
-      size: i % 3 === 0 ? "large" : i % 2 === 0 ? "medium" : "small",
-      currentOrderId: i < 5 ? `order-${i + 1}` : undefined,
-      lastUpdated: new Date(),
-    }));
+    // 3. Tạo 6 tủ thông minh cố định (A1-A6)
+    const lockers: Omit<Locker, "id">[] = [
+      { lockerNumber: "A1", status: "available", size: "small", lastUpdated: new Date() },
+      { lockerNumber: "A2", status: "available", size: "medium", lastUpdated: new Date() },
+      { lockerNumber: "A3", status: "available", size: "large", lastUpdated: new Date() },
+      { lockerNumber: "A4", status: "available", size: "small", lastUpdated: new Date() },
+      { lockerNumber: "A5", status: "available", size: "medium", lastUpdated: new Date() },
+      { lockerNumber: "A6", status: "available", size: "large", lastUpdated: new Date() },
+    ];
 
     const lockerIds: string[] = [];
     for (const locker of lockers) {
       const lockerRef = await addDoc(collection(db, "lockers"), locker);
       lockerIds.push(lockerRef.id);
     }
-    console.log("✅ Đã tạo 24 tủ thông minh");
+    console.log("✅ Đã tạo 6 tủ thông minh cố định (A1-A6)");
 
     // 4. Tạo giao dịch mẫu
     const sampleOrders: Omit<Order, "id">[] = [
@@ -144,6 +145,7 @@ export async function seedFirestoreData() {
         lockerId: lockerIds[2],
         description: "Tủ không mở được sau khi nhập vân tay",
         status: "pending",
+        processingStage: "reported",
         createdAt: new Date("2025-02-02T11:00:00"),
       },
       {
@@ -152,6 +154,7 @@ export async function seedFirestoreData() {
         lockerId: lockerIds[6],
         description: "Màn hình cảm ứng không hoạt động",
         status: "resolved",
+        processingStage: "notified",
         createdAt: new Date("2025-02-01T09:00:00"),
         resolvedAt: new Date("2025-02-01T16:00:00"),
       },
@@ -170,7 +173,7 @@ export async function seedFirestoreData() {
   }
 }
 
-// Hàm kiểm tra xem dữ liệu đã tồn tại chưa
+// Kiểm tra xem dữ liệu đã tồn tại chưa
 export async function checkDataExists(): Promise<boolean> {
   try {
     const usersSnapshot = await getDocs(collection(db, "users"));
@@ -186,29 +189,25 @@ export async function ensureDefaultAdmin(): Promise<{ created: boolean; id?: str
   try {
     const defaultEmail = "admin@hcmute.edu.vn";
     const defaultPassword = "admin123";
-    // Idempotency flag in Firestore to avoid duplicate seeding on multiple mounts
     const seedFlagRef = doc(db, "_meta", "seed_status");
     const seedSnap = await getDoc(seedFlagRef);
     if (seedSnap.exists() && seedSnap.data()?.adminSeeded) {
       return { created: false, id: seedSnap.data()?.adminUid };
     }
 
-    // Check Auth first
-    const methods = await fetchSignInMethodsForEmail(auth, defaultEmail).catch(() => [])
-    let uid: string | undefined
+    const methods = await fetchSignInMethodsForEmail(auth, defaultEmail).catch(() => []);
+    let uid: string | undefined;
     if (!methods || methods.length === 0) {
-      const cred = await createUserWithEmailAndPassword(auth, defaultEmail, defaultPassword)
-      uid = cred.user.uid
+      const cred = await createUserWithEmailAndPassword(auth, defaultEmail, defaultPassword);
+      uid = cred.user.uid;
     }
 
-    // Ensure profile document in Firestore (use uid if available)
     const usersRef = collection(db, "users");
     const q = query(usersRef, where("email", "==", defaultEmail));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
-      const existingId = snapshot.docs[0].id
-      // set flag so it won't run again
-      await setDoc(seedFlagRef, { adminSeeded: true, adminUid: existingId }, { merge: true })
+      const existingId = snapshot.docs[0].id;
+      await setDoc(seedFlagRef, { adminSeeded: true, adminUid: existingId }, { merge: true });
       return { created: !!uid, id: existingId };
     }
 
@@ -221,15 +220,16 @@ export async function ensureDefaultAdmin(): Promise<{ created: boolean; id?: str
       createdAt: new Date(),
     } as Omit<User, "id" | "password">;
 
-    let finalId: string
+    let finalId: string;
     if (uid) {
-      await setDoc(doc(db, "users", uid), profile)
-      finalId = uid
+      await setDoc(doc(db, "users", uid), profile);
+      finalId = uid;
     } else {
-      const docRef = await addDoc(usersRef, { ...profile, password: defaultPassword } as any)
-      finalId = docRef.id
+      const docRef = await addDoc(usersRef, { ...profile, password: defaultPassword } as any);
+      finalId = docRef.id;
     }
-    await setDoc(seedFlagRef, { adminSeeded: true, adminUid: finalId }, { merge: true })
+
+    await setDoc(seedFlagRef, { adminSeeded: true, adminUid: finalId }, { merge: true });
     return { created: true, id: finalId };
   } catch (error) {
     console.error("Lỗi đảm bảo admin mặc định:", error);
@@ -237,18 +237,9 @@ export async function ensureDefaultAdmin(): Promise<{ created: boolean; id?: str
   }
 }
 
-// Tạo 6 tủ mẫu (A01-A06) nếu chưa có tủ nào
+// ✅ Chỉ tạo 6 tủ mặc định A1–A6 nếu chưa có, KHÔNG xoá dữ liệu cũ
 export async function seedSixLockers(): Promise<{ created: number }> {
   try {
-    const lockersSnap = await getDocs(collection(db, "lockers"));
-    // Xóa toàn bộ tủ hiện có trước khi seed để đảm bảo đúng 6 tủ A1-A6
-    if (!lockersSnap.empty) {
-      for (const d of lockersSnap.docs) {
-        await setDoc(doc(db, "_trash", `lockers_${d.id}`), d.data()).catch(() => {})
-        await import("firebase/firestore").then(({ deleteDoc }) => deleteDoc(doc(db, "lockers", d.id))).catch(() => {})
-      }
-    }
-
     const baseNow = new Date();
     const lockers: Omit<Locker, "id">[] = [
       { lockerNumber: "A1", status: "available", size: "small", lastUpdated: baseNow },
@@ -261,22 +252,108 @@ export async function seedSixLockers(): Promise<{ created: number }> {
 
     let created = 0;
     for (const locker of lockers) {
-      // Lưu với id cố định theo số tủ (A1..A6)
-      await setDoc(doc(db, "lockers", locker.lockerNumber.toUpperCase()), locker);
-      created += 1;
+      const lockerRef = doc(db, "lockers", locker.lockerNumber.toUpperCase());
+      const lockerSnap = await getDoc(lockerRef);
+
+      // Chỉ tạo mới nếu chưa tồn tại, KHÔNG ghi đè dữ liệu hiện có
+      if (!lockerSnap.exists()) {
+        await setDoc(lockerRef, {
+          ...locker,
+          lockerNumber: locker.lockerNumber.toUpperCase(),
+        });
+        created += 1;
+        console.log(`✅ Tạo mới tủ ${locker.lockerNumber}`);
+      } else {
+        console.log(`ℹ️ Tủ ${locker.lockerNumber} đã tồn tại, giữ nguyên dữ liệu`);
+      }
     }
+
+    console.log(`✅ Đảm bảo có đủ 6 tủ mặc định (tạo mới ${created} tủ).`);
     return { created };
   } catch (error) {
-    console.error("Lỗi tạo 6 tủ mẫu:", error);
+    console.error("❌ Lỗi khi tạo 6 tủ mẫu:", error);
     return { created: 0 };
   }
 }
 
-// Đảm bảo có 6 tủ mặc định (A01-A06)
-export async function ensureDefaultLockers(): Promise<void> {
+// Đảm bảo chỉ có 6 tủ A1-A6, xóa các tủ khác nếu có
+export async function cleanupExtraLockers(): Promise<{ removed: number }> {
   try {
-    await seedSixLockers()
-  } catch (e) {
-    // ignore
+    const { getDocs, collection, deleteDoc, doc } = await import("firebase/firestore");
+    const snap = await getDocs(collection(db, "lockers"));
+    const validNumbers = ["A1", "A2", "A3", "A4", "A5", "A6"];
+    let removed = 0;
+
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data();
+      const lockerNumber = String(data?.lockerNumber || "").trim().toUpperCase();
+      
+      // Xóa tủ không thuộc A1-A6
+      if (!validNumbers.includes(lockerNumber)) {
+        try {
+          await deleteDoc(doc(db, "lockers", docSnap.id));
+          removed += 1;
+          console.log(`🗑️ Xóa tủ không hợp lệ: ${lockerNumber} (ID: ${docSnap.id})`);
+        } catch (error) {
+          console.error(`Lỗi xóa tủ ${lockerNumber}:`, error);
+        }
+      }
+    }
+
+    if (removed > 0) {
+      console.log(`✅ Đã xóa ${removed} tủ không hợp lệ, chỉ giữ lại A1-A6`);
+    }
+    return { removed };
+  } catch (error) {
+    console.error("❌ Lỗi khi dọn dẹp tủ:", error);
+    return { removed: 0 };
   }
+}
+
+// Flag để đảm bảo chỉ chạy một lần
+let lockersInitialized = false;
+let lockersInitPromise: Promise<void> | null = null;
+
+// Gọi để đảm bảo có 6 tủ mặc định - CHỈ chạy một lần
+export async function ensureDefaultLockers(): Promise<void> {
+  // Nếu đã khởi tạo rồi, return ngay
+  if (lockersInitialized) {
+    return;
+  }
+
+  // Nếu đang khởi tạo, đợi promise hiện tại
+  if (lockersInitPromise) {
+    return lockersInitPromise;
+  }
+
+  // Tạo promise mới
+  lockersInitPromise = (async () => {
+    try {
+      console.log("🔄 Bắt đầu khởi tạo 6 tủ mặc định...");
+      
+      // Trước tiên dọn dẹp các tủ không hợp lệ
+      const cleanupResult = await cleanupExtraLockers();
+      
+      // Sau đó đảm bảo có đủ 6 tủ A1-A6
+      const result = await seedSixLockers();
+      
+      lockersInitialized = true;
+      console.log(`✅ Hoàn thành khởi tạo tủ: xóa ${cleanupResult.removed} tủ không hợp lệ, tạo mới ${result.created} tủ nếu thiếu.`);
+    } catch (e) {
+      console.error("❌ Lỗi trong ensureDefaultLockers:", e);
+      // Reset flag để có thể thử lại
+      lockersInitialized = false;
+      lockersInitPromise = null;
+      throw e;
+    }
+  })();
+
+  return lockersInitPromise;
+}
+
+// Hàm để reset flag (chỉ dùng cho testing)
+export function resetLockerInitialization(): void {
+  lockersInitialized = false;
+  lockersInitPromise = null;
+  console.log("🔄 Reset flag khởi tạo tủ");
 }

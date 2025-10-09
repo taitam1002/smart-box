@@ -6,12 +6,15 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { Home, Package, User, History, AlertCircle, Edit3 } from "lucide-react"
+import { Home, Package, User, History, AlertCircle, Edit3, Hand, Bell } from "lucide-react"
+import { CustomerNotificationDropdown } from "./customer-notification-dropdown"
 
 const navItems = [
   { title: "Trang chủ", href: "/customer/dashboard", icon: Home },
   { title: "Gửi hàng", href: "/customer/send", icon: Package },
+  { title: "Nhận hàng", href: "/customer/pickup", icon: Hand },
   { title: "Lịch sử", href: "/customer/history", icon: History },
+  { title: "Thông báo", href: "/customer/notifications", icon: Bell },
   { title: "Báo lỗi", href: "/customer/report-error", icon: AlertCircle },
   { title: "Tài khoản", href: "/customer/profile", icon: User },
 ]
@@ -40,6 +43,7 @@ export function CustomerHeader() {
           </div>
 
           <div className="flex items-center gap-3">
+            <CustomerNotificationDropdown />
             <div className="text-right">
               <p className="text-sm font-medium">Xin chào, {user?.name}</p>
               <p className="text-xs text-white/70">{user?.customerType === "shipper" ? "Shipper" : "Người gửi"}</p>

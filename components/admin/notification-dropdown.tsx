@@ -1,18 +1,20 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bell, CheckCheck } from "lucide-react"
+import { Bell, CheckCheck, ArrowRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { getNotifications } from "@/lib/firestore-actions"
+import { getNotifications, markNotificationAsRead } from "@/lib/firestore-actions"
 import { cn } from "@/lib/utils"
 import { db } from "@/lib/firebase"
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
 import { toast } from "@/hooks/use-toast"
+import { useRouter } from "next/navigation"
 
 export function NotificationDropdown() {
   const [notifications, setNotifications] = useState<any[]>([])
+  const router = useRouter()
 
   useEffect(() => {
     const notificationsQuery = query(
@@ -31,10 +33,13 @@ export function NotificationDropdown() {
           createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
         }
       })
+      // Lọc chỉ thông báo hệ thống (không có customerId) và KHÔNG có cờ privateToCustomer
+      const systemNotifications = next.filter(notification => !notification.customerId && !notification.privateToCustomer)
+      
       // Detect newly added notifications after initial load
       if (!firstLoad) {
         const prevIds = new Set(notifications.map((n) => n.id))
-        const newOnes = next.filter((n) => !prevIds.has(n.id))
+        const newOnes = systemNotifications.filter((n) => !prevIds.has(n.id))
         if (newOnes.length > 0) {
           const newest = newOnes[0]
           toast({
@@ -44,19 +49,57 @@ export function NotificationDropdown() {
         }
       }
       firstLoad = false
-      setNotifications(next)
+      setNotifications(systemNotifications)
     })
 
     return () => unsubscribe()
   }, [])
+  
   const unreadCount = notifications.filter((n) => !n.isRead).length
+  const recentNotifications = notifications.slice(0, 5) // Chỉ hiển thị 5 thông báo gần nhất
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+  const markAsRead = async (id: string) => {
+    try {
+      await markNotificationAsRead(id)
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+    } catch (error) {
+      console.error("Lỗi đánh dấu đã đọc:", error)
+    }
   }
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+  const markAllAsRead = async () => {
+    try {
+      const unreadNotifications = notifications.filter(n => !n.isRead)
+      const promises = unreadNotifications.map(notification => 
+        markNotificationAsRead(notification.id)
+      )
+      await Promise.all(promises)
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+      toast({
+        title: "Thành công",
+        description: "Đã đánh dấu tất cả thông báo là đã đọc",
+      })
+    } catch (error) {
+      console.error("Lỗi đánh dấu tất cả đã đọc:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể đánh dấu tất cả thông báo",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleViewAllNotifications = () => {
+    router.push('/admin/notifications')
+  }
+
+  const handleNotificationClick = async (notification: any) => {
+    // Đánh dấu đã đọc nếu chưa đọc
+    if (!notification.isRead) {
+      await markAsRead(notification.id)
+    }
+    // Chuyển đến trang thông báo
+    router.push('/admin/notifications')
   }
 
   const getNotificationIcon = (type: string) => {
@@ -112,17 +155,17 @@ export function NotificationDropdown() {
           )}
         </div>
         <div className="max-h-[400px] overflow-y-auto">
-          {notifications.length === 0 ? (
+          {recentNotifications.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">Không có thông báo mới</div>
           ) : (
-            notifications.map((notification) => (
+            recentNotifications.map((notification) => (
               <div
                 key={notification.id}
                 className={cn(
                   "p-4 border-b hover:bg-gray-50 transition-colors cursor-pointer",
                   !notification.isRead && "bg-blue-50",
                 )}
-                onClick={() => markAsRead(notification.id)}
+                onClick={() => handleNotificationClick(notification)}
               >
                 <div className="flex gap-3">
                   <span className="text-2xl flex-shrink-0">{getNotificationIcon(notification.type)}</span>
@@ -136,6 +179,21 @@ export function NotificationDropdown() {
             ))
           )}
         </div>
+        
+        {/* Footer với nút xem tất cả */}
+        {notifications.length > 5 && (
+          <div className="p-4 border-t bg-gray-50">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleViewAllNotifications}
+              className="w-full text-[#2E3192] hover:text-[#2E3192] hover:bg-white"
+            >
+              Xem tất cả thông báo
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

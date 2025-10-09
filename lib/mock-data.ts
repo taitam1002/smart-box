@@ -141,6 +141,7 @@ export const mockErrorReports: ErrorReport[] = [
     lockerId: "locker-3",
     description: "Tủ không mở được sau khi nhập vân tay",
     status: "pending",
+    processingStage: "reported",
     createdAt: new Date("2025-02-02T11:00:00"),
   },
   {
@@ -150,6 +151,7 @@ export const mockErrorReports: ErrorReport[] = [
     lockerId: "locker-7",
     description: "Màn hình cảm ứng không hoạt động",
     status: "resolved",
+    processingStage: "notified",
     createdAt: new Date("2025-02-01T09:00:00"),
     resolvedAt: new Date("2025-02-01T16:00:00"),
   },

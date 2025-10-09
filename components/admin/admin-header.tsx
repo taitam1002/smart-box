@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { getCurrentUser } from "@/lib/auth"
 import { NotificationDropdown } from "./notification-dropdown"
+import { RealTimeClock } from "./real-time-clock"
 
 export function AdminHeader() {
   const [user, setUser] = useState<any>(null)
@@ -25,7 +26,8 @@ export function AdminHeader() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
+          <RealTimeClock />
           <NotificationDropdown />
           <div className="text-right">
             <p className="text-sm font-medium">Xin chào, {user?.name}</p>

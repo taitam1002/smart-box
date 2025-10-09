@@ -2,6 +2,8 @@ export type UserRole = "admin" | "customer"
 export type CustomerType = "shipper" | "regular"
 export type LockerStatus = "available" | "occupied" | "maintenance" | "error"
 export type OrderStatus = "pending" | "delivered" | "picked_up" | "expired"
+export type ErrorStatus = "pending" | "received" | "processing" | "resolved" | "closed"
+export type ErrorProcessingStage = "reported" | "received" | "processing" | "resolved" | "notified"
 
 export interface User {
   id: string
@@ -13,6 +15,7 @@ export interface User {
   customerType?: CustomerType
   isActive: boolean
   createdAt: Date
+  lastLoginAt?: Date
 }
 
 export interface Locker {
@@ -38,6 +41,8 @@ export interface Order {
   createdAt: Date
   deliveredAt?: Date
   pickedUpAt?: Date
+  pickupCode?: string
+  transactionType?: "send" | "hold"
 }
 
 export interface Notification {
@@ -47,6 +52,7 @@ export interface Notification {
   lockerId?: string
   orderId?: string
   customerId?: string
+  errorId?: string
   isRead: boolean
   createdAt: Date
 }
@@ -57,7 +63,13 @@ export interface ErrorReport {
   customerName: string
   lockerId?: string
   description: string
-  status: "pending" | "resolved"
+  status: ErrorStatus
+  processingStage: ErrorProcessingStage
   createdAt: Date
+  receivedAt?: Date
+  processingStartedAt?: Date
   resolvedAt?: Date
+  closedAt?: Date
+  adminNotes?: string
+  customerNotifiedAt?: Date
 }

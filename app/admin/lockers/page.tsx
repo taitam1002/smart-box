@@ -45,8 +45,8 @@ export default function LockersPage() {
     // Realtime lockers
     const lockersQuery = query(collection(db, "lockers"), orderBy("lastUpdated", "desc"))
     const unsubscribeLockers = onSnapshot(lockersQuery, (snapshot) => {
+      // Chỉ tạo 6 tủ mặc định nếu chưa có tủ nào, KHÔNG reset dữ liệu hiện có
       if (snapshot.empty) {
-        // Ensure default 6 lockers if none exist
         ensureDefaultLockers().catch(() => {})
       }
       const next = snapshot.docs.map((docSnap) => {
@@ -75,8 +75,9 @@ export default function LockersPage() {
         }
       }
       const uniqueList = Array.from(grouped.values())
-      // Kick off dedupe in background if we detected duplicates (best-effort)
-      if (uniqueList.length < next.length) {
+      // Chỉ gọi dedupe khi thực sự có duplicate và ít nhất 2 tủ
+      if (uniqueList.length < next.length && next.length >= 2) {
+        console.log(`🔄 Phát hiện ${next.length - uniqueList.length} tủ duplicate, đang xử lý...`)
         dedupeLockers().catch(() => {})
       }
       setLockers(uniqueList)
@@ -119,6 +120,9 @@ export default function LockersPage() {
   }
 
   const filteredLockers = lockers.filter((locker) => {
+    // Kiểm tra locker và lockerNumber tồn tại
+    if (!locker || !locker.lockerNumber) return false
+    
     const matchesSearch = locker.lockerNumber.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === "all" || locker.status === statusFilter
     return matchesSearch && matchesStatus
@@ -288,21 +292,23 @@ export default function LockersPage() {
                   </div>
                 </div>
                 
-                <div className="mt-4 space-y-2">
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Thời gian gửi</Label>
-                    <p className="text-sm">
-                      {new Date(currentTransaction.createdAt).toLocaleString("vi-VN")}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Thời gian giao hàng</Label>
-                    <p className="text-sm">
-                      {currentTransaction.deliveredAt 
-                        ? new Date(currentTransaction.deliveredAt).toLocaleString("vi-VN")
-                        : "Chưa giao hàng"
-                      }
-                    </p>
+                <div className="mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Thời gian gửi</Label>
+                      <p className="text-sm">
+                        {new Date(currentTransaction.createdAt).toLocaleString("vi-VN")}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Thời gian nhận hàng</Label>
+                      <p className="text-sm">
+                        {currentTransaction.pickedUpAt 
+                          ? new Date(currentTransaction.pickedUpAt).toLocaleString("vi-VN")
+                          : "Chưa có"
+                        }
+                      </p>
+                    </div>
                   </div>
                   {currentTransaction.orderCode && (
                     <div>

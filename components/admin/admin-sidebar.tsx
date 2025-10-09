@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, Package, Users, History, BarChart3, Bell, LogOut } from "lucide-react"
+import { LayoutDashboard, Package, Users, History, BarChart3, Bell, LogOut, AlertTriangle } from "lucide-react"
 import { logout } from "@/lib/auth"
 import { useToast } from "@/hooks/use-toast"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
@@ -41,6 +41,11 @@ const menuItems = [
     href: "/admin/notifications",
     icon: Bell,
   },
+  {
+    title: "Quản lý báo lỗi",
+    href: "/admin/error-reports",
+    icon: AlertTriangle,
+  },
 ]
 
 export function AdminSidebar() {
@@ -55,7 +60,7 @@ export function AdminSidebar() {
       await logout()
       toast({
         title: "Đăng xuất thành công",
-        description: "Bạn đã đăng xuất khỏi hệ thống. Thông báo đã được ghi lại.",
+        description: "Bạn đã đăng xuất khỏi hệ thống.",
         duration: 3000,
       })
       router.push("/")
@@ -114,8 +119,7 @@ export function AdminSidebar() {
             <AlertDialogHeader>
               <AlertDialogTitle>Xác nhận đăng xuất</AlertDialogTitle>
               <AlertDialogDescription>
-                Bạn có chắc chắn muốn đăng xuất khỏi hệ thống không? 
-                Thông tin đăng xuất sẽ được ghi lại trong hệ thống.
+                Bạn có chắc chắn muốn đăng xuất khỏi hệ thống không?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
