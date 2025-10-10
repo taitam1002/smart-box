@@ -2,31 +2,28 @@
 
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Package, Users, TrendingUp, AlertCircle } from "lucide-react"
-import { getLockers, getUsers, getTransactions, getNotifications } from "@/lib/firestore-actions"
-import type { Locker, User, Order, Notification } from "@/lib/types"
+import { Package, Users, TrendingUp } from "lucide-react"
+import { getLockers, getUsers, getTransactions } from "@/lib/firestore-actions"
+import type { Locker, User, Order } from "@/lib/types"
 
 export default function AdminDashboardPage() {
   const [lockers, setLockers] = useState<Locker[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [lockersData, usersData, ordersData, notificationsData] = await Promise.all([
+        const [lockersData, usersData, ordersData] = await Promise.all([
           getLockers(),
           getUsers(),
-          getTransactions(),
-          getNotifications()
+          getTransactions()
         ])
         
         setLockers(lockersData)
         setUsers(usersData)
         setOrders(ordersData)
-        setNotifications(notificationsData)
       } catch (error) {
         console.error("Lỗi tải dữ liệu:", error)
       } finally {
@@ -61,7 +58,6 @@ export default function AdminDashboardPage() {
     return orderDate.getTime() === today.getTime()
   }).length
   
-  const unreadNotifications = notifications.filter((n) => !n.isRead).length
 
   const stats = [
     {
@@ -126,23 +122,6 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      {/* Notifications Alert */}
-      {unreadNotifications > 0 && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-800">
-              <AlertCircle className="h-5 w-5" />
-              Thông báo cần xử lý
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-orange-700">
-              Bạn có <span className="font-bold">{unreadNotifications}</span> thông báo chưa đọc. Vui lòng kiểm tra mục
-              Thông báo.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Recent Activity */}
       <div className="grid gap-6 md:grid-cols-2">

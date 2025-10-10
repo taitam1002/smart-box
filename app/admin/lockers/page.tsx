@@ -110,10 +110,13 @@ export default function LockersPage() {
   const handleViewLockerDetails = (locker: any) => {
     setSelectedLocker(locker)
     
-    // Tìm giao dịch đang diễn ra với tủ này
-    const activeTransaction = transactions.find(
-      (tx) => tx.lockerId === locker.id && tx.status === "delivered"
-    )
+    // Chỉ hiển thị giao dịch đang diễn ra khi tủ thực sự đang được sử dụng
+    let activeTransaction = null
+    if (locker.status === "occupied") {
+      activeTransaction = transactions.find(
+        (tx) => tx.lockerId === locker.id && tx.status === "delivered"
+      )
+    }
     
     setCurrentTransaction(activeTransaction)
     setIsViewDialogOpen(true)

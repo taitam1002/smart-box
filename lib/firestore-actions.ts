@@ -539,6 +539,17 @@ export async function receiveErrorReport(errorId: string, adminNotes?: string) {
 // Bắt đầu xử lý lỗi (chuyển từ received → processing)
 export async function startProcessingError(errorId: string, adminNotes?: string) {
   const errorRef = doc(db, "errors", errorId);
+  
+  // Lấy thông tin lỗi để biết lockerId
+  const errorSnap = await getDoc(errorRef);
+  if (!errorSnap.exists()) {
+    throw new Error("Không tìm thấy báo lỗi");
+  }
+  
+  const errorData = errorSnap.data();
+  const lockerId = errorData.lockerId;
+  
+  // Cập nhật trạng thái lỗi
   await updateDoc(errorRef, {
     status: "processing",
     processingStage: "processing",
@@ -546,12 +557,30 @@ export async function startProcessingError(errorId: string, adminNotes?: string)
     adminNotes: adminNotes || "",
     lastUpdated: new Date()
   });
+  
+  // Cập nhật trạng thái tủ thành maintenance nếu có lockerId
+  if (lockerId) {
+    await updateLockerStatus(lockerId, "maintenance");
+    console.log(`🔧 Đã đặt tủ ${lockerId} vào chế độ bảo trì`);
+  }
+  
   console.log(`🔧 Đã bắt đầu xử lý lỗi: ${errorId}`);
 }
 
 // Hoàn thành xử lý lỗi (chuyển từ processing → resolved)
 export async function resolveErrorReport(errorId: string, adminNotes?: string) {
   const errorRef = doc(db, "errors", errorId);
+  
+  // Lấy thông tin lỗi để biết lockerId
+  const errorSnap = await getDoc(errorRef);
+  if (!errorSnap.exists()) {
+    throw new Error("Không tìm thấy báo lỗi");
+  }
+  
+  const errorData = errorSnap.data();
+  const lockerId = errorData.lockerId;
+  
+  // Cập nhật trạng thái lỗi
   await updateDoc(errorRef, {
     status: "resolved",
     processingStage: "resolved",
@@ -559,6 +588,13 @@ export async function resolveErrorReport(errorId: string, adminNotes?: string) {
     adminNotes: adminNotes || "",
     lastUpdated: new Date()
   });
+  
+  // Cập nhật trạng thái tủ về available nếu có lockerId
+  if (lockerId) {
+    await updateLockerStatus(lockerId, "available");
+    console.log(`✅ Đã đặt tủ ${lockerId} về trạng thái khả dụng`);
+  }
+  
   console.log(`✅ Đã hoàn thành xử lý lỗi: ${errorId}`);
 }
 

@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCurrentUser } from "@/lib/auth"
 import { saveTransaction, getLockers, updateLockerStatus, saveNotification, findUserByEmail } from "@/lib/firestore-actions"
 import { SMSService } from "@/lib/sms-service"
@@ -20,16 +21,24 @@ export default function SendPackagePage() {
   const [loading, setLoading] = useState(false)
   const [showFingerprintModal, setShowFingerprintModal] = useState(false)
   const [lockers, setLockers] = useState<any[]>([])
+  
+  // Modal states
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [showErrorModal, setShowErrorModal] = useState(false)
+  const [modalMessage, setModalMessage] = useState("")
+  const [modalTitle, setModalTitle] = useState("")
 
   const [sendFormData, setSendFormData] = useState({
     receiverName: "",
     receiverPhone: "",
     orderCode: "",
+    lockerSize: "",
   })
 
   const [holdFormData, setHoldFormData] = useState({
     receiverName: "",
     receiverPhone: "",
+    lockerSize: "",
   })
 
   useEffect(() => {
@@ -42,6 +51,9 @@ export default function SendPackagePage() {
         const lockersData = await getLockers()
         setLockers(lockersData)
         console.log("[Send] Loaded lockers:", lockersData)
+        // Debug: Hiển thị thông tin tủ
+        const availableLockers = lockersData.filter(l => l.status === "available")
+        console.log("🔍 Tủ khả dụng:", availableLockers.map(l => `${l.lockerNumber} (${l.size})`))
       } catch (error) {
         console.error("Lỗi tải danh sách tủ:", error)
       }
@@ -49,6 +61,19 @@ export default function SendPackagePage() {
     
     loadLockers()
   }, [])
+
+  // Helper functions for modals
+  const showSuccess = (title: string, message: string) => {
+    setModalTitle(title)
+    setModalMessage(message)
+    setShowSuccessModal(true)
+  }
+
+  const showError = (title: string, message: string) => {
+    setModalTitle(title)
+    setModalMessage(message)
+    setShowErrorModal(true)
+  }
 
   const handleSendPackage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,7 +96,28 @@ export default function SendPackagePage() {
       if (!senderId) {
         throw new Error("Không xác định được tài khoản. Vui lòng đăng nhập lại.")
       }
-      const availableLocker = lockers.find((l) => (l.status || "").trim() === "available")
+      
+      // Tìm tủ khả dụng theo kích cỡ được chọn
+      let availableLocker = null
+      
+      if (sendFormData.lockerSize) {
+        console.log(`🔍 Tìm tủ kích cỡ: ${sendFormData.lockerSize}`)
+        // Tìm tủ có kích cỡ phù hợp
+        availableLocker = lockers.find((l) => 
+          (l.status || "").trim() === "available" && 
+          l.size === sendFormData.lockerSize
+        )
+        
+        if (availableLocker) {
+          console.log(`✅ Tìm thấy tủ phù hợp: ${availableLocker.lockerNumber} (${availableLocker.size})`)
+        } else {
+          console.log(`❌ Không có tủ ${sendFormData.lockerSize} trống`)
+        }
+      } else {
+        // Nếu không chọn kích cỡ, tìm tủ bất kỳ
+        availableLocker = lockers.find((l) => (l.status || "").trim() === "available")
+        console.log(`🔍 Tìm tủ bất kỳ: ${availableLocker?.lockerNumber} (${availableLocker?.size})`)
+      }
       if (availableLocker) {
         // Tạo mã 6 số cho việc lấy hàng
         const pickupCode = SMSService.generateCode()
@@ -149,14 +195,30 @@ export default function SendPackagePage() {
           console.error("Lỗi tạo thông báo cho khách hàng:", e)
         }
         
-        alert(`Gửi hàng thành công! Tủ số: ${availableLocker.lockerNumber}. Mã lấy hàng đã được gửi qua SMS.`)
-        router.push("/customer/history")
+        const sizeLabel = availableLocker.size === "small" ? "Nhỏ" : availableLocker.size === "medium" ? "Vừa" : "Lớn"
+        showSuccess(
+          "Gửi hàng thành công!",
+          `Tủ số: ${availableLocker.lockerNumber}\nKích cỡ: ${sizeLabel}\nMã lấy hàng đã được gửi qua SMS.`
+        )
       } else {
-        alert("Không có tủ trống. Vui lòng thử lại sau.")
+        if (sendFormData.lockerSize) {
+          const sizeLabel = sendFormData.lockerSize === "small" ? "Nhỏ" : sendFormData.lockerSize === "medium" ? "Vừa" : "Lớn"
+          
+          // Hiển thị danh sách tủ khả dụng
+          const availableLockers = lockers.filter(l => l.status === "available")
+          const availableSizes = [...new Set(availableLockers.map(l => l.size))]
+          const sizeLabels = availableSizes.map(size => 
+            size === "small" ? "Nhỏ" : size === "medium" ? "Vừa" : "Lớn"
+          )
+          
+          showError("Lỗi",`Hiện tại tủ ${sizeLabel} đã hết. Mời bạn chọn loại tủ khác để thay thế.\n\nTủ khả dụng: ${sizeLabels.join(", ")}`)
+        } else {
+          showError("Lỗi","Không có tủ trống. Vui lòng thử lại sau.")
+        }
       }
     } catch (error: any) {
       console.error("Lỗi gửi hàng:", error)
-      alert(error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.")
+      showError("Lỗi",error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.")
     } finally {
       setLoading(false)
     }
@@ -167,7 +229,19 @@ export default function SendPackagePage() {
     setLoading(true)
 
     try {
-      const availableLocker = lockers.find((l) => (l.status || "").trim() === "available")
+      // Tìm tủ khả dụng theo kích cỡ được chọn
+      let availableLocker = null
+      
+      if (holdFormData.lockerSize) {
+        // Tìm tủ có kích cỡ phù hợp
+        availableLocker = lockers.find((l) => 
+          (l.status || "").trim() === "available" && 
+          l.size === holdFormData.lockerSize
+        )
+      } else {
+        // Nếu không chọn kích cỡ, tìm tủ bất kỳ
+        availableLocker = lockers.find((l) => (l.status || "").trim() === "available")
+      }
       if (availableLocker) {
         setLoading(false)
         setShowFingerprintModal(true)
@@ -231,21 +305,35 @@ export default function SendPackagePage() {
             }
             
             setShowFingerprintModal(false)
-            alert(`Giữ hàng thành công! Tủ số: ${availableLocker.lockerNumber}`)
-            setHoldFormData({ receiverName: "", receiverPhone: "" })
+            const sizeLabel = availableLocker.size === "small" ? "Nhỏ" : availableLocker.size === "medium" ? "Vừa" : "Lớn"
+            showError("Lỗi",`Giữ hàng thành công! Tủ số: ${availableLocker.lockerNumber} (Kích cỡ: ${sizeLabel})`)
+            setHoldFormData({ receiverName: "", receiverPhone: "", lockerSize: "" })
           } catch (error) {
             console.error("Lỗi giữ hàng:", error)
-            alert("Đã xảy ra lỗi. Vui lòng thử lại.")
+            showError("Lỗi","Đã xảy ra lỗi. Vui lòng thử lại.")
             setShowFingerprintModal(false)
           }
         }, 3000)
       } else {
-        alert("Không có tủ trống. Vui lòng thử lại sau.")
+        if (holdFormData.lockerSize) {
+          const sizeLabel = holdFormData.lockerSize === "small" ? "Nhỏ" : holdFormData.lockerSize === "medium" ? "Vừa" : "Lớn"
+          
+          // Hiển thị danh sách tủ khả dụng
+          const availableLockers = lockers.filter(l => l.status === "available")
+          const availableSizes = [...new Set(availableLockers.map(l => l.size))]
+          const sizeLabels = availableSizes.map(size => 
+            size === "small" ? "Nhỏ" : size === "medium" ? "Vừa" : "Lớn"
+          )
+          
+          showError("Lỗi",`Hiện tại tủ ${sizeLabel} đã hết. Mời bạn chọn loại tủ khác để thay thế.\n\nTủ khả dụng: ${sizeLabels.join(", ")}`)
+        } else {
+          showError("Lỗi","Không có tủ trống. Vui lòng thử lại sau.")
+        }
         setLoading(false)
       }
     } catch (error) {
       console.error("Lỗi giữ hàng:", error)
-      alert("Đã xảy ra lỗi. Vui lòng thử lại.")
+      showError("Lỗi","Đã xảy ra lỗi. Vui lòng thử lại.")
       setLoading(false)
     }
   }
@@ -321,6 +409,24 @@ export default function SendPackagePage() {
                   </div>
                 )}
 
+                <div className="space-y-2">
+                  <Label htmlFor="send-lockerSize">Kích cỡ tủ *</Label>
+                  <Select
+                    value={sendFormData.lockerSize}
+                    onValueChange={(value) => setSendFormData({ ...sendFormData, lockerSize: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn kích cỡ tủ phù hợp" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Nhỏ - Phù hợp cho tài liệu, điện thoại</SelectItem>
+                      <SelectItem value="medium">Vừa - Phù hợp cho túi xách, giày dép</SelectItem>
+                      <SelectItem value="large">Lớn - Phù hợp cho balo, hộp lớn</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <Button
                     type="submit"
@@ -372,6 +478,24 @@ export default function SendPackagePage() {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="hold-lockerSize">Kích cỡ tủ *</Label>
+                  <Select
+                    value={holdFormData.lockerSize}
+                    onValueChange={(value) => setHoldFormData({ ...holdFormData, lockerSize: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn kích cỡ tủ phù hợp" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Nhỏ - Phù hợp cho tài liệu, điện thoại</SelectItem>
+                      <SelectItem value="medium">Vừa - Phù hợp cho túi xách, giày dép</SelectItem>
+                      <SelectItem value="large">Lớn - Phù hợp cho balo, hộp lớn</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <Button
                     type="submit"
@@ -402,6 +526,63 @@ export default function SendPackagePage() {
             </div>
             <p className="mt-6 text-sm text-muted-foreground text-center">Đang chờ xác thực vân tay...</p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Modal */}
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <Package className="h-5 w-5" />
+              {modalTitle}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <pre className="whitespace-pre-wrap text-sm text-green-800 font-medium">
+                {modalMessage}
+              </pre>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => {
+                setShowSuccessModal(false)
+                router.push("/customer/history")
+              }}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              Xác nhận
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Modal */}
+      <Dialog open={showErrorModal} onOpenChange={setShowErrorModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Package className="h-5 w-5" />
+              {modalTitle}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <pre className="whitespace-pre-wrap text-sm text-red-800">
+                {modalMessage}
+              </pre>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setShowErrorModal(false)}
+              className="w-full bg-red-600 hover:bg-red-700 text-white"
+            >
+              Đóng
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
