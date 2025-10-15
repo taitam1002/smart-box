@@ -403,7 +403,11 @@ export default function SendPackagePage() {
                       id="orderCode"
                       placeholder="Nhập mã đơn hàng"
                       value={sendFormData.orderCode}
-                      onChange={(e) => setSendFormData({ ...sendFormData, orderCode: e.target.value })}
+                      maxLength={8}
+                      onChange={(e) => {
+                        const val = (e.target.value || "").toString().slice(0, 8)
+                        setSendFormData({ ...sendFormData, orderCode: val })
+                      }}
                       required
                     />
                   </div>

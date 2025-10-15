@@ -15,6 +15,8 @@ export default function HistoryPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [orders, setOrders] = useState<any[]>([])
   const [lockers, setLockers] = useState<any[]>([])
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 5
 
   useEffect(() => {
     const u = getCurrentUser()
@@ -71,6 +73,16 @@ export default function HistoryPage() {
       order.orderCode?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
+  // Reset về trang 1 khi thay đổi từ khóa tìm kiếm hoặc số lượng kết quả
+  useEffect(() => {
+    setPage(1)
+  }, [searchTerm])
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))
+  const startIdx = (page - 1) * PAGE_SIZE
+  const endIdx = startIdx + PAGE_SIZE
+  const paginated = filteredOrders.slice(startIdx, endIdx)
+
   return (
     <div className="space-y-6">
       <div>
@@ -96,7 +108,7 @@ export default function HistoryPage() {
       {/* Orders List */}
       {filteredOrders.length > 0 ? (
         <div className="space-y-4">
-          {filteredOrders.map((order) => {
+          {paginated.map((order) => {
             const locker = lockers.find((l) => l.id === order.lockerId)
             return (
               <Card
@@ -180,6 +192,32 @@ export default function HistoryPage() {
               </Card>
             )
           })}
+          {/* Pagination */}
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              className={`px-3 py-1 rounded border ${page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Trước
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                className={`px-3 py-1 rounded border ${p === page ? 'bg-[#2E3192] text-white border-[#2E3192]' : 'hover:bg-gray-100'}`}
+                onClick={() => setPage(p)}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              className={`px-3 py-1 rounded border ${page === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              Sau
+            </button>
+          </div>
         </div>
       ) : (
         <Card>

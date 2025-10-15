@@ -43,7 +43,10 @@ export function CustomerHeader() {
           </div>
 
           <div className="flex items-center gap-3">
-            <CustomerNotificationDropdown />
+            {/* Đổi chuông thành màu trắng rõ ràng hơn */}
+            <div className="text-white">
+              <CustomerNotificationDropdown />
+            </div>
             <div className="text-right">
               <p className="text-sm font-medium">Xin chào, {user?.name}</p>
               <p className="text-xs text-white/70">{user?.customerType === "shipper" ? "Shipper" : "Người gửi"}</p>

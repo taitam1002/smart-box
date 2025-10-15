@@ -310,7 +310,7 @@ export default function LockersPage() {
               <div className="border-t pt-6">
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <Package className="h-5 w-5" />
-                  Tủ đang bảo trì nhưng vẫn có hàng bên trong
+                  Thông tin giao dịch đang diễn ra
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">

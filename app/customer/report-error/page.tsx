@@ -26,6 +26,8 @@ export default function ReportErrorPage() {
   const [myReports, setMyReports] = useState<any[]>([])
   const [lockers, setLockers] = useState<any[]>([])
   const [lockerError, setLockerError] = useState<string>("")
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 5
 
   useEffect(() => {
     const currentUser = getCurrentUser()
@@ -71,6 +73,11 @@ export default function ReportErrorPage() {
     
     return () => unsubscribe()
   }, [router])
+
+  // Đổi trang về 1 khi số lượng hoặc lọc thay đổi trong tương lai
+  useEffect(() => {
+    setPage(1)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -234,7 +241,7 @@ export default function ReportErrorPage() {
               <div className="text-center py-8 text-muted-foreground">Bạn chưa có báo cáo lỗi nào</div>
             ) : (
               <div className="space-y-4">
-                {myReports.map((report) => (
+                {myReports.slice((page-1)*PAGE_SIZE, (page-1)*PAGE_SIZE + PAGE_SIZE).map((report) => (
                   <div key={report.id} className="border rounded-lg p-4 space-y-2">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -285,6 +292,34 @@ export default function ReportErrorPage() {
                     </div>
                   </div>
                 ))}
+                {/* Pagination */}
+                {myReports.length > PAGE_SIZE && (
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <button
+                      className={`px-3 py-1 rounded border ${page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      Trước
+                    </button>
+                    {Array.from({ length: Math.ceil(myReports.length / PAGE_SIZE) }, (_, i) => i + 1).map((p) => (
+                      <button
+                        key={p}
+                        className={`px-3 py-1 rounded border ${p === page ? 'bg-[#2E3192] text-white border-[#2E3192]' : 'hover:bg-gray-100'}`}
+                        onClick={() => setPage(p)}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                    <button
+                      className={`px-3 py-1 rounded border ${page === Math.ceil(myReports.length / PAGE_SIZE) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+                      onClick={() => setPage((p) => Math.min(Math.ceil(myReports.length / PAGE_SIZE), p + 1))}
+                      disabled={page === Math.ceil(myReports.length / PAGE_SIZE)}
+                    >
+                      Sau
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

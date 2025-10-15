@@ -171,14 +171,12 @@ export default function CustomerDashboardPage() {
                       : "bg-blue-50 border-blue-500"
                   }`}>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="mb-1">
                         <p className="font-medium">Người nhận: {order.receiverName}</p>
                         {order.orderCode && (
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            isPickedUp 
-                              ? "bg-green-400 text-green-700" 
-                              : "bg-blue-400 text-blue-700"
-                          }`}>{order.orderCode}</span>
+                          <p className="text-sm text-[#2E3192] font-semibold mt-1 ">
+                            Mã đơn: {order.orderCode}
+                          </p>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">

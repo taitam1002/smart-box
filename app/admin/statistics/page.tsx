@@ -5,6 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getTransactions, getLockers } from "@/lib/firestore-actions"
 import { BarChart3, TrendingUp, Package, Clock } from "lucide-react"
 import type { Order, Locker } from "@/lib/types"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
+import { BarChart, Bar, CartesianGrid, XAxis, YAxis } from "recharts"
 
 export default function StatisticsPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -29,6 +35,37 @@ export default function StatisticsPage() {
 
     loadData()
   }, [])
+
+  // Dữ liệu: giao dịch theo ngày (7 ngày gần nhất)
+  const days = Array.from({ length: 7 }).map((_, idx) => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - (6 - idx))
+    return d
+  })
+  const ordersByDay = days.map((d) => {
+    const count = orders.filter((o) => {
+      const od = new Date(o.createdAt)
+      od.setHours(0, 0, 0, 0)
+      return od.getTime() === d.getTime()
+    }).length
+    return {
+      day: `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1)
+        .toString()
+        .padStart(2, "0")}`,
+      count,
+    }
+  })
+
+  // Dữ liệu: số lượt sử dụng theo tủ (top 8)
+  const lockerIdToCount = new Map<string, number>()
+  orders.forEach((o) => {
+    lockerIdToCount.set(o.lockerId, (lockerIdToCount.get(o.lockerId) || 0) + 1)
+  })
+  const lockerUsageData = lockers
+    .map((l) => ({ locker: l.lockerNumber, count: lockerIdToCount.get(l.id) || 0 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
 
   if (loading) {
     return (
@@ -62,7 +99,7 @@ export default function StatisticsPage() {
     return orderDate.getTime() === yesterday.getTime()
   }).length
 
-  const usageChange = yesterdayUsage > 0 ? ((todayUsage - yesterdayUsage) / yesterdayUsage * 100).toFixed(0) : 0
+  const usageChange = yesterdayUsage > 0 ? ((todayUsage - yesterdayUsage) / yesterdayUsage * 100).toFixed(0) : "0"
 
   // Tính trung bình sử dụng trong 7 ngày qua
   const sevenDaysAgo = new Date()
@@ -175,6 +212,56 @@ export default function StatisticsPage() {
           <CardContent>
             <div className="text-3xl font-bold">{mostUsedLocker}</div>
             <p className="text-xs text-muted-foreground mt-1">{maxUsage} lượt sử dụng</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Xu hướng giao dịch 7 ngày</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              config={{
+                count: {
+                  label: "Số giao dịch",
+                  color: "hsl(var(--primary))",
+                },
+              }}
+              className="h-72"
+            >
+              <BarChart data={ordersByDay} margin={{ left: 8, right: 8, top: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="day" />
+                <YAxis allowDecimals={false} />
+                <ChartTooltip content={<ChartTooltipContent nameKey="count" />} />
+                <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Lượt sử dụng của các tủ</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              config={{
+                count: { label: "Lượt sử dụng", color: "hsl(var(--chart-2))" },
+              }}
+              className="h-72"
+            >
+              <BarChart data={lockerUsageData} margin={{ left: 8, right: 8, top: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="locker" />
+                <YAxis allowDecimals={false} />
+                <ChartTooltip content={<ChartTooltipContent nameKey="count" />} />
+                <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>

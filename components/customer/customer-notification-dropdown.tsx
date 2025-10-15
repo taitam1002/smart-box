@@ -105,7 +105,7 @@ export function CustomerNotificationDropdown() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="relative focus:outline-none">
-          <Bell className="h-6 w-6 text-gray-600 hover:text-[#2E3192] transition-colors" />
+          <Bell className="h-6 w-6 text-white" />
           {unreadCount > 0 && (
             <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></div>
           )}
