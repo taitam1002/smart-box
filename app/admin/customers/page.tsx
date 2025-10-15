@@ -200,15 +200,15 @@ export default function CustomersPage() {
                     }
                   </TableCell>
                   <TableCell>
-                    {customer.lastLoginAt ? (
+                    {customer.lastAccessAt ? (
                       <div className="flex flex-col">
                         <span className="text-sm">
                           {(() => {
                             try {
                               // Xử lý Firestore Timestamp hoặc Date
-                              const date = customer.lastLoginAt instanceof Timestamp
-                                ? customer.lastLoginAt.toDate()
-                                : new Date(customer.lastLoginAt as any)
+                              const date = customer.lastAccessAt instanceof Timestamp
+                                ? customer.lastAccessAt.toDate()
+                                : new Date(customer.lastAccessAt as any)
                               return date.toLocaleDateString("vi-VN")
                             } catch (error) {
                               console.error("Lỗi format ngày:", error)
@@ -220,9 +220,9 @@ export default function CustomersPage() {
                           {(() => {
                             try {
                               // Xử lý Firestore Timestamp hoặc Date
-                              const date = customer.lastLoginAt instanceof Timestamp
-                                ? customer.lastLoginAt.toDate()
-                                : new Date(customer.lastLoginAt as any)
+                              const date = customer.lastAccessAt instanceof Timestamp
+                                ? customer.lastAccessAt.toDate()
+                                : new Date(customer.lastAccessAt as any)
                               return date.toLocaleTimeString("vi-VN")
                             } catch (error) {
                               console.error("Lỗi format giờ:", error)
@@ -232,7 +232,7 @@ export default function CustomersPage() {
                         </span>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">Chưa đăng nhập</span>
+                      <span className="text-muted-foreground">Chưa truy cập</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">

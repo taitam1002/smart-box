@@ -1,6 +1,6 @@
 
 import { db } from "@/lib/firebase";
-import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc, writeBatch } from "firebase/firestore";
 import type { User, Order, ErrorReport, Notification, Locker } from "@/lib/types";
 
 // Lưu thông tin tài khoản người dùng
@@ -340,6 +340,33 @@ export async function getUserErrorReports(userId: string): Promise<ErrorReport[]
   })
 }
 
+// Lấy báo lỗi theo lockerId
+export async function getErrorReportsByLockerId(lockerId: string): Promise<ErrorReport[]> {
+  const q = query(
+    collection(db, "errors"), 
+    where("lockerId", "==", lockerId)
+  );
+  const querySnapshot = await getDocs(q);
+  const items = querySnapshot.docs.map((docSnap) => {
+    const data: any = docSnap.data()
+    return {
+      id: docSnap.id,
+      ...data,
+      createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+      resolvedAt: data?.resolvedAt?.toDate ? data.resolvedAt.toDate() : data.resolvedAt,
+      receivedAt: data?.receivedAt?.toDate ? data.receivedAt.toDate() : data.receivedAt,
+      processingStartedAt: data?.processingStartedAt?.toDate ? data.processingStartedAt.toDate() : data.processingStartedAt,
+      closedAt: data?.closedAt?.toDate ? data.closedAt.toDate() : data.closedAt,
+      customerNotifiedAt: data?.customerNotifiedAt?.toDate ? data.customerNotifiedAt.toDate() : data.customerNotifiedAt,
+    } as ErrorReport
+  })
+  return items.sort((a, b) => {
+    const ta = (a as any).createdAt?.getTime?.() ?? 0
+    const tb = (b as any).createdAt?.getTime?.() ?? 0
+    return tb - ta
+  })
+}
+
 // Lấy tất cả thông báo
 export async function getNotifications(): Promise<Notification[]> {
   const q = query(collection(db, "notifications"), orderBy("createdAt", "desc"));
@@ -448,6 +475,26 @@ export async function markNotificationAsRead(notificationId: string) {
   await updateDoc(notificationRef, { isRead: true });
 }
 
+// Đánh dấu tất cả thông báo của khách hàng đã đọc
+export async function markAllNotificationsAsRead(customerId: string) {
+  try {
+    const notificationsRef = collection(db, "notifications");
+    const q = query(notificationsRef, where("customerId", "==", customerId), where("isRead", "==", false));
+    const querySnapshot = await getDocs(q);
+    
+    const batch = writeBatch(db);
+    querySnapshot.docs.forEach((doc) => {
+      batch.update(doc.ref, { isRead: true });
+    });
+    
+    await batch.commit();
+    console.log(`✅ Đã đánh dấu tất cả thông báo đã đọc cho customer ${customerId}`);
+  } catch (error) {
+    console.error("Lỗi đánh dấu tất cả thông báo đã đọc:", error);
+    throw error;
+  }
+}
+
 // Cập nhật trạng thái người dùng
 export async function updateUserStatus(userId: string, isActive: boolean) {
   try {
@@ -474,6 +521,21 @@ export async function updateLastLogin(userId: string) {
     console.log(`✅ Đã cập nhật lần đăng nhập cuối cho user ${userId}`)
   } catch (error) {
     console.error("Lỗi cập nhật lần đăng nhập cuối:", error)
+    throw error
+  }
+}
+
+// Cập nhật lần truy cập cuối (khi user thoát browser)
+export async function updateLastAccess(userId: string) {
+  try {
+    const userRef = doc(db, "users", userId)
+    await updateDoc(userRef, {
+      lastAccessAt: new Date(),
+      lastUpdated: new Date()
+    })
+    console.log(`✅ Đã cập nhật lần truy cập cuối cho user ${userId}`)
+  } catch (error) {
+    console.error("Lỗi cập nhật lần truy cập cuối:", error)
     throw error
   }
 }
@@ -589,10 +651,27 @@ export async function resolveErrorReport(errorId: string, adminNotes?: string) {
     lastUpdated: new Date()
   });
   
-  // Cập nhật trạng thái tủ về available nếu có lockerId
+  // Cập nhật trạng thái tủ sau khi xử lý lỗi:
+  // - Nếu tủ vẫn đang có đơn (currentOrderId tồn tại) → để lại trạng thái "occupied"
+  // - Ngược lại → đưa về "available"
   if (lockerId) {
-    await updateLockerStatus(lockerId, "available");
-    console.log(`✅ Đã đặt tủ ${lockerId} về trạng thái khả dụng`);
+    try {
+      const lockerRef = doc(db, "lockers", lockerId)
+      const lockerSnap = await getDoc(lockerRef)
+      const lockerData: any = lockerSnap.exists() ? lockerSnap.data() : null
+      const hasActiveOrder = !!(lockerData && lockerData.currentOrderId)
+      if (hasActiveOrder) {
+        await updateLockerStatus(lockerId, "occupied")
+        console.log(`✅ Tủ ${lockerId} còn đơn đang gửi, giữ trạng thái occupied`)
+      } else {
+        await updateLockerStatus(lockerId, "available")
+        console.log(`✅ Tủ ${lockerId} không còn đơn, đưa về trạng thái available`)
+      }
+    } catch (e) {
+      // Nếu có lỗi khi đọc tủ, fallback an toàn: KHÔNG xóa dữ liệu đơn
+      await updateLockerStatus(lockerId, "occupied")
+      console.warn(`⚠️ Không đọc được dữ liệu tủ ${lockerId}, tạm giữ occupied để tránh mất dữ liệu`)
+    }
   }
   
   console.log(`✅ Đã hoàn thành xử lý lỗi: ${errorId}`);

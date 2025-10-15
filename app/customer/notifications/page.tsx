@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { Bell, Package, AlertCircle, Info, CheckCircle, Clock, X, Check } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
-import { findUserByEmail, markNotificationAsRead } from "@/lib/firestore-actions"
+import { findUserByEmail, markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/firestore-actions"
 import { toast } from "@/hooks/use-toast"
 
 const notificationIcons = {
@@ -90,6 +90,26 @@ export default function CustomerNotificationsPage() {
     })
   }
 
+  const markAllAsRead = async () => {
+    if (!user) return
+    
+    try {
+      await markAllNotificationsAsRead(user.id)
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      toast({
+        title: "Thành công",
+        description: "Đã đánh dấu tất cả thông báo là đã đọc",
+      })
+    } catch (error) {
+      console.error("Lỗi đánh dấu tất cả thông báo:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể đánh dấu tất cả thông báo",
+        variant: "destructive",
+      })
+    }
+  }
+
   const formatTime = (date: Date) => {
     const now = new Date()
     const diff = now.getTime() - date.getTime()
@@ -115,9 +135,20 @@ export default function CustomerNotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold text-[#2E3192]">Thông báo của bạn</h2>
-        <p className="text-muted-foreground mt-1">Theo dõi các thông báo về đơn hàng và báo lỗi</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-3xl font-bold text-[#2E3192]">Thông báo của bạn</h2>
+          <p className="text-muted-foreground mt-1">Theo dõi các thông báo về đơn hàng và báo lỗi</p>
+        </div>
+        {notifications.length > 0 && notifications.some(n => !n.isRead) && (
+          <Button 
+            onClick={markAllAsRead}
+            className="flex items-center gap-2 bg-[#2E3192] hover:bg-[#1a1d6b] text-white font-medium shadow-md hover:shadow-lg transition-all duration-200"
+          >
+            <Check className="h-4 w-4" />
+            Đã đọc tất cả
+          </Button>
+        )}
       </div>
 
       {notifications.length === 0 ? (

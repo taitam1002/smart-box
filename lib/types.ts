@@ -16,6 +16,7 @@ export interface User {
   isActive: boolean
   createdAt: Date
   lastLoginAt?: Date
+  lastAccessAt?: Date
 }
 
 export interface Locker {
