@@ -495,6 +495,28 @@ export async function markAllNotificationsAsRead(customerId: string) {
   }
 }
 
+// Đánh dấu tất cả thông báo hệ thống (dành cho admin) là đã đọc
+export async function markAllAdminNotificationsAsRead() {
+  try {
+    const notificationsRef = collection(db, "notifications")
+    // Chỉ lấy thông báo chưa đọc và không gắn customerId (system notifications)
+    const q = query(notificationsRef, where("isRead", "==", false), where("customerId", "==", null))
+    const snap = await getDocs(q)
+
+    if (snap.empty) return
+
+    const batch = writeBatch(db)
+    snap.docs.forEach((d) => {
+      batch.update(d.ref, { isRead: true })
+    })
+    await batch.commit()
+    console.log(`✅ Đã đánh dấu ${snap.size} thông báo hệ thống là đã đọc`)
+  } catch (e) {
+    console.error("Lỗi đánh dấu tất cả thông báo hệ thống đã đọc:", e)
+    throw e
+  }
+}
+
 // Cập nhật trạng thái người dùng
 export async function updateUserStatus(userId: string, isActive: boolean) {
   try {

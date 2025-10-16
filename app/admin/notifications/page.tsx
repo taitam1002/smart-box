@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getNotifications, getLockers, markNotificationAsRead, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport, getErrorReports } from "@/lib/firestore-actions"
+import { getNotifications, getLockers, markNotificationAsRead, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport, getErrorReports, markAllAdminNotificationsAsRead } from "@/lib/firestore-actions"
 import { AlertCircle, AlertTriangle, Info, Check, Package, Play, CheckCircle, Bell, Lock } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
@@ -221,7 +221,23 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold text-[#2E3192]">Thông báo</h2>
-        <p className="text-muted-foreground mt-1">Theo dõi các thông báo và cảnh báo từ hệ thống</p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-muted-foreground">Theo dõi các thông báo và cảnh báo từ hệ thống</p>
+          <button
+            onClick={async () => {
+              try {
+                await markAllAdminNotificationsAsRead()
+                setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+                toast({ title: "Thành công", description: "Đã đánh dấu tất cả thông báo là đã đọc" })
+              } catch (e) {
+                toast({ title: "Lỗi", description: "Không thể đánh dấu tất cả là đã đọc", variant: "destructive" })
+              }
+            }}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+          >
+            <Check className="h-4 w-4 mr-1" /> Đọc hết tất cả
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">

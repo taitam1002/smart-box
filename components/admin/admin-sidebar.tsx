@@ -77,13 +77,15 @@ export function AdminSidebar() {
   }
 
   return (
-    <div className="flex h-screen w-64 flex-col bg-[#2E3192] text-white">
-      <div className="p-6">
+    <div className="flex h-screen w-64 flex-col bg-[#2E3192] text-white hidden lg:flex">
+      {/* Header - Fixed */}
+      <div className="p-6 flex-shrink-0">
         <h2 className="text-2xl font-bold">ADMIN PANEL</h2>
         <p className="text-sm text-white/70 mt-1">Smart Box System</p>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      {/* Navigation - Scrollable */}
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href
@@ -103,7 +105,8 @@ export function AdminSidebar() {
         })}
       </nav>
 
-      <div className="p-3">
+      {/* Logout Button - Fixed at bottom */}
+      <div className="p-3 flex-shrink-0">
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button
