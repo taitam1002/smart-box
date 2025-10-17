@@ -34,7 +34,7 @@ export async function login(email: string, password: string): Promise<User | nul
     if (!userData.isActive) {
       // Đăng xuất ngay lập tức nếu tài khoản bị khóa
       await signOut(auth)
-      throw new Error("Tài khoản của bạn đang bị khóa do quá lâu không truy cập. \n Vui lòng liên hệ quản trị viên để được hỗ trợ.")
+      throw new Error("Tài khoản của bạn hiện đang bị khóa.\n Vui lòng liên hệ quản trị viên để được hỗ trợ.")
     }
     
     // Cập nhật lần đăng nhập cuối

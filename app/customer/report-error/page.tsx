@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { AlertCircle, CheckCircle2, Send } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/firebase"
@@ -293,33 +294,12 @@ export default function ReportErrorPage() {
                   </div>
                 ))}
                 {/* Pagination */}
-                {myReports.length > PAGE_SIZE && (
-                  <div className="flex items-center justify-center gap-2 pt-2">
-                    <button
-                      className={`px-3 py-1 rounded border ${page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                    >
-                      Trước
-                    </button>
-                    {Array.from({ length: Math.ceil(myReports.length / PAGE_SIZE) }, (_, i) => i + 1).map((p) => (
-                      <button
-                        key={p}
-                        className={`px-3 py-1 rounded border ${p === page ? 'bg-[#2E3192] text-white border-[#2E3192]' : 'hover:bg-gray-100'}`}
-                        onClick={() => setPage(p)}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                    <button
-                      className={`px-3 py-1 rounded border ${page === Math.ceil(myReports.length / PAGE_SIZE) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-                      onClick={() => setPage((p) => Math.min(Math.ceil(myReports.length / PAGE_SIZE), p + 1))}
-                      disabled={page === Math.ceil(myReports.length / PAGE_SIZE)}
-                    >
-                      Sau
-                    </button>
-                  </div>
-                )}
+                <UnifiedPagination 
+                  page={page} 
+                  setPage={setPage} 
+                  total={myReports.length} 
+                  pageSize={PAGE_SIZE} 
+                />
               </div>
             )}
           </CardContent>

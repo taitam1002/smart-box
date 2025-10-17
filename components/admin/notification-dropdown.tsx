@@ -139,18 +139,24 @@ export function NotificationDropdown() {
           )}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96 p-0">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold text-lg">Thông báo</h3>
+      <DropdownMenuContent 
+        align="end" 
+        className="w-[calc(100vw-2rem)] max-w-sm sm:w-96 p-0"
+        side="bottom"
+        alignOffset={-10}
+      >
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b">
+          <h3 className="font-semibold text-base sm:text-lg">Thông báo</h3>
           {unreadCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
               onClick={markAllAsRead}
-              className="text-xs text-[#2E3192] hover:text-[#2E3192]"
+              className="text-xs text-[#2E3192] hover:text-[#2E3192] whitespace-nowrap"
             >
-              <CheckCheck className="h-4 w-4 mr-1" />
-              Đánh dấu đã đọc
+              <CheckCheck className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+              <span className="hidden xs:inline">Đánh dấu đã đọc</span>
+              <span className="xs:hidden">Đã đọc</span>
             </Button>
           )}
         </div>
@@ -162,15 +168,17 @@ export function NotificationDropdown() {
               <div
                 key={notification.id}
                 className={cn(
-                  "p-4 border-b hover:bg-gray-50 transition-colors cursor-pointer",
+                  "p-3 sm:p-4 border-b hover:bg-gray-50 transition-colors cursor-pointer",
                   !notification.isRead && "bg-blue-50",
                 )}
                 onClick={() => handleNotificationClick(notification)}
               >
-                <div className="flex gap-3">
-                  <span className="text-2xl flex-shrink-0">{getNotificationIcon(notification.type)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className={cn("text-sm", !notification.isRead && "font-semibold")}>{notification.message}</p>
+                <div className="flex gap-2 sm:gap-3">
+                  <span className="text-xl sm:text-2xl flex-shrink-0">{getNotificationIcon(notification.type)}</span>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className={cn("text-xs sm:text-sm leading-relaxed break-words", !notification.isRead && "font-semibold")}>
+                      {notification.message}
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">{formatTime(notification.createdAt)}</p>
                   </div>
                   {!notification.isRead && <div className="w-2 h-2 bg-[#2E3192] rounded-full flex-shrink-0 mt-1" />}
@@ -182,15 +190,15 @@ export function NotificationDropdown() {
         
         {/* Footer với nút xem tất cả */}
         {notifications.length > 5 && (
-          <div className="p-4 border-t bg-gray-50">
+          <div className="p-3 sm:p-4 border-t bg-gray-50">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleViewAllNotifications}
-              className="w-full text-[#2E3192] hover:text-[#2E3192] hover:bg-white"
+              className="w-full text-[#2E3192] hover:text-[#2E3192] hover:bg-white text-xs sm:text-sm"
             >
-              Xem tất cả thông báo
-              <ArrowRight className="h-4 w-4 ml-2" />
+              <span className="truncate">Xem tất cả thông báo</span>
+              <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 ml-2 flex-shrink-0" />
             </Button>
           </div>
         )}

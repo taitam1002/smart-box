@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { getErrorReports, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport } from "@/lib/firestore-actions"
 import { AlertCircle, Check, Play, CheckCircle, Bell, Lock, Clock, User } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
@@ -39,6 +40,9 @@ function ErrorReportsContent() {
   const [errorReports, setErrorReports] = useState<ErrorReport[]>([])
   const [loading, setLoading] = useState(true)
   const [highlightedErrorId, setHighlightedErrorId] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 10
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -184,6 +188,20 @@ function ErrorReportsContent() {
         <p className="text-muted-foreground mt-1">Theo dõi và xử lý các báo lỗi từ khách hàng</p>
       </div>
 
+      {/* Search */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-2">
+            <input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              placeholder="Tìm theo khách hàng, ID, tủ, mô tả, trạng thái..."
+              className="w-full rounded-md border px-3 py-2"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent className="pt-6">
           <Table>
@@ -200,7 +218,10 @@ function ErrorReportsContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {errorReports.map((report, index) => {
+              {filterReports(errorReports, search)
+                .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+                .map((report, idx) => {
+                const index = (page - 1) * PAGE_SIZE + idx
                 const nextActions = getNextActions(report.status, report.processingStage)
                 const isHighlighted = highlightedErrorId === report.id
                 return (
@@ -275,6 +296,8 @@ function ErrorReportsContent() {
           </Table>
         </CardContent>
       </Card>
+
+      <UnifiedPagination page={page} setPage={setPage} total={filterReports(errorReports, search).length} pageSize={PAGE_SIZE} />
     </div>
   )
 }
@@ -293,3 +316,22 @@ export default function ErrorReportsPage() {
     </Suspense>
   )
 }
+
+function filterReports(items: ErrorReport[], q: string) {
+  const term = q.trim().toLowerCase()
+  if (!term) return items
+  return items.filter((r) => {
+    const fields = [
+      r.customerName,
+      r.customerId,
+      r.lockerId,
+      r.description,
+      r.status,
+      r.processingStage,
+    ]
+    .filter(Boolean)
+    .map((v) => String(v).toLowerCase())
+    return fields.some((f) => f.includes(term))
+  })
+}
+

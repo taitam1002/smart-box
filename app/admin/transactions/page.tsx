@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { getTransactions, getLockers } from "@/lib/firestore-actions"
 import type { OrderStatus, Order, Locker } from "@/lib/types"
 
@@ -94,7 +95,7 @@ export default function TransactionsPage() {
       <div>
         <h2 className="text-3xl font-bold text-[#2E3192]">Lịch sử giao dịch</h2>
         <p className="text-muted-foreground mt-1">Xem lịch sử tất cả các giao dịch trong hệ thống</p>
-        <p className="text-medium text-[#2E3192] mt-1 font-bold">Tổng số giao dịch: {orders.length}</p>
+        {/* <p className="text-medium text-[#2E3192] mt-1 font-bold">Tổng số giao dịch: {orders.length}</p> */}
       </div>
 
       <Card>
@@ -173,33 +174,12 @@ export default function TransactionsPage() {
             </TableBody>
           </Table>
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
-              <button
-                className={`px-3 py-1 rounded border ${page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Trước
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <button
-                  key={p}
-                  className={`px-3 py-1 rounded border ${p === page ? 'bg-[#2E3192] text-white border-[#2E3192]' : 'hover:bg-gray-100'}`}
-                  onClick={() => setPage(p)}
-                >
-                  {p}
-                </button>
-              ))}
-              <button
-                className={`px-3 py-1 rounded border ${page === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Sau
-              </button>
-            </div>
-          )}
+          <UnifiedPagination 
+            page={page} 
+            setPage={setPage} 
+            total={filtered.length} 
+            pageSize={PAGE_SIZE} 
+          />
         </CardContent>
       </Card>
     </div>

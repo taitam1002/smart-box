@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { getNotifications, getLockers, markNotificationAsRead, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport, getErrorReports, markAllAdminNotificationsAsRead } from "@/lib/firestore-actions"
+import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { AlertCircle, AlertTriangle, Info, Check, Package, Play, CheckCircle, Bell, Lock } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
@@ -26,6 +27,8 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [lockers, setLockers] = useState<any[]>([])
   const [errorReports, setErrorReports] = useState<any[]>([])
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 10
   const router = useRouter()
 
   useEffect(() => {
@@ -48,6 +51,9 @@ export default function NotificationsPage() {
       // Lọc chỉ thông báo hệ thống (không có customerId) và KHÔNG có cờ privateToCustomer
       const systemNotifications = next.filter(notification => !notification.customerId && !notification.privateToCustomer)
       setNotifications(systemNotifications)
+      // Nếu đang ở trang vượt quá tổng trang sau khi realtime cập nhật, quay về trang cuối hợp lệ
+      const totalPages = Math.max(1, Math.ceil(systemNotifications.length / PAGE_SIZE))
+      setPage((p) => Math.min(p, totalPages))
     })
 
     // lockers can stay as one-time load
@@ -240,8 +246,11 @@ export default function NotificationsPage() {
         </div>
       </div>
 
+
       <div className="space-y-4">
-        {notifications.map((notification) => {
+        {notifications
+          .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+          .map((notification) => {
           const Icon = notificationIcons[notification.type as keyof typeof notificationIcons] || Info
           const colorClass =
             notificationColors[notification.type as keyof typeof notificationColors] || notificationColors.info
@@ -357,7 +366,12 @@ export default function NotificationsPage() {
           )
         })}
       </div>
+
+      {/* Pagination controls (bottom) */}
+        <UnifiedPagination page={page} setPage={setPage} total={notifications.length} pageSize={PAGE_SIZE} />
     </div>
   )
 }
+
+
 

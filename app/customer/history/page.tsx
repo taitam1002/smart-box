@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserTransactions, getLockers } from "@/lib/firestore-actions"
 import { Search, Package, Clock, CheckCircle } from "lucide-react"
@@ -193,31 +194,12 @@ export default function HistoryPage() {
             )
           })}
           {/* Pagination */}
-          <div className="flex items-center justify-center gap-2 pt-2">
-            <button
-              className={`px-3 py-1 rounded border ${page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              Trước
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <button
-                key={p}
-                className={`px-3 py-1 rounded border ${p === page ? 'bg-[#2E3192] text-white border-[#2E3192]' : 'hover:bg-gray-100'}`}
-                onClick={() => setPage(p)}
-              >
-                {p}
-              </button>
-            ))}
-            <button
-              className={`px-3 py-1 rounded border ${page === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-            >
-              Sau
-            </button>
-          </div>
+          <UnifiedPagination 
+            page={page} 
+            setPage={setPage} 
+            total={filteredOrders.length} 
+            pageSize={PAGE_SIZE} 
+          />
         </div>
       ) : (
         <Card>

@@ -147,7 +147,12 @@ export default function ProfilePage() {
                   id="phone"
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  inputMode="numeric"
+                  maxLength={10}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10)
+                    setFormData({ ...formData, phone: digits })
+                  }}
                   className="pl-10"
                   required
                 />

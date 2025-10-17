@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { getCurrentUser } from "@/lib/auth"
 import { Bell, Package, AlertCircle, Info, CheckCircle, Clock, X, Check } from "lucide-react"
 import { db } from "@/lib/firebase"
@@ -29,6 +30,8 @@ export default function CustomerNotificationsPage() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 10
 
   useEffect(() => {
     const init = async () => {
@@ -70,6 +73,9 @@ export default function CustomerNotificationsPage() {
             return tb - ta
           })
           setNotifications(merged)
+          // Điều chỉnh trang hiện tại nếu vượt quá tổng trang sau khi realtime cập nhật
+          const totalPages = Math.max(1, Math.ceil(merged.length / PAGE_SIZE))
+          setPage((p) => Math.min(p, totalPages))
           setLoading(false)
         })
         unsubscribers.push(unsub)
@@ -161,8 +167,11 @@ export default function CustomerNotificationsPage() {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="space-y-4">
-          {notifications.map((notification) => {
+          {notifications
+            .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+            .map((notification) => {
             const Icon = notificationIcons[notification.type as keyof typeof notificationIcons] || Info
             const colorClass = notificationColors[notification.type as keyof typeof notificationColors] || notificationColors.info
 
@@ -242,7 +251,10 @@ export default function CustomerNotificationsPage() {
             )
           })}
         </div>
+        <UnifiedPagination page={page} setPage={setPage} total={notifications.length} pageSize={PAGE_SIZE} />
+        </>
       )}
     </div>
   )
 }
+
