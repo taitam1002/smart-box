@@ -296,3 +296,17 @@
   transform: scale(1.1);
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
+
+/* Flag wave animation (used on login footer flag) */
+  @keyframes wave {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    25% { transform: rotate(2deg) translateY(1px); }
+    50% { transform: rotate(0deg) translateY(0); }
+    75% { transform: rotate(-2deg) translateY(-1px); }
+  }
+
+  .animate-wave {
+    animation: wave 1.8s ease-in-out infinite;
+    transform-origin: left center;
+    display: inline-block;
+  }

@@ -98,7 +98,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-6 animate-slide-up-delay">
           {/* Account Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300 ">
               <User className="w-5 h-5" />
             </div>
             <Input
@@ -144,7 +144,7 @@ export default function LoginPage() {
           )}
 
           {/* Links */}
-          <div className="text-center animate-fade-in-delay-2 bg-white/10 backdrop-blur-md rounded-full p-2">
+          <div className="text-center animate-fade-in-delay-2 bg-[#2e56a6] backdrop-blur-md rounded-full p-2">
             <Link 
               href="/forgot-password" 
               className="text-white font-semibold hover:underline text-md transition-colors duration-300 hover:text-blue-300"
@@ -173,11 +173,12 @@ export default function LoginPage() {
         </form>
 
         {/* Footer */}
-              <p className="text-white/70 text-md text-center mt-12 flex items-center justify-center gap-2 animate-fade-in-delay-3">
+        <p className="text-white/70 text-md text-center mt-12 flex items-center justify-center gap-2 animate-fade-in-delay-3">
         Một sản phẩm của TAM-DUY-K21
         <ReactCountryFlag
           countryCode="VN"
           svg
+          className="animate-wave"
           style={{
             width: "1.5em",
             height: "1.5em",

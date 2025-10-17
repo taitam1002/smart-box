@@ -19,7 +19,7 @@ export function CustomerFooter() {
             HCMUTE
           </a>
           <span className="opacity-60">•</span>
-          <span className="opacity-90">Phiên bản 1.0.0</span>
+          <span className="opacity-90">Phiên bản 1.0.2</span>
         </div>
       </div>
     </footer>

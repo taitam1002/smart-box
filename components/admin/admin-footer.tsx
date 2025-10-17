@@ -19,7 +19,7 @@ export function AdminFooter() {
             HCMUTE
           </a>
           <span className="opacity-40">•</span>
-          <span>Phiên bản 1.0.0</span>
+          <span>Phiên bản 1.0.2</span>
         </div>
       </div>
     </footer>
