@@ -141,7 +141,7 @@ export default function CustomerNotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 justify-between items-start sm:items-center">
         <div>
           <h2 className="text-3xl font-bold text-[#2E3192]">Thông báo của bạn</h2>
           <p className="text-muted-foreground mt-1">Theo dõi các thông báo về đơn hàng và báo lỗi</p>
@@ -149,7 +149,7 @@ export default function CustomerNotificationsPage() {
         {notifications.length > 0 && notifications.some(n => !n.isRead) && (
           <Button 
             onClick={markAllAsRead}
-            className="flex items-center gap-2 bg-[#2E3192] hover:bg-[#1a1d6b] text-white font-medium shadow-md hover:shadow-lg transition-all duration-200"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#2E3192] hover:bg-[#1a1d6b] text-white font-medium shadow-md hover:shadow-lg transition-all duration-200"
           >
             <Check className="h-4 w-4" />
             Đã đọc tất cả
@@ -168,7 +168,7 @@ export default function CustomerNotificationsPage() {
         </Card>
       ) : (
         <>
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {notifications
             .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
             .map((notification) => {
@@ -186,16 +186,26 @@ export default function CustomerNotificationsPage() {
                   }
                 }}
               >
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 rounded-lg bg-white">
-                      <Icon className="h-6 w-6" />
+                <CardContent className="p-4 sm:p-6 relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      dismissNotification(notification.id)
+                    }}
+                    className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Đóng thông báo"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="p-2 rounded-lg bg-white flex-shrink-0">
+                      <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3 sm:gap-4">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border border-gray-300 bg-white capitalize">
+                            <span className="inline-flex flex-shrink-0 items-center px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-medium border border-gray-300 bg-white capitalize">
                               {notification.type === "error"
                                 ? "Báo lỗi"
                                 : notification.type === "warning"
@@ -205,44 +215,36 @@ export default function CustomerNotificationsPage() {
                                     : "Thông tin"}
                             </span>
                             {!notification.isRead && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-[#E31E24] text-white">
+                              <span className="inline-flex flex-shrink-0 items-center px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-medium bg-[#E31E24] text-white">
                                 Mới
                               </span>
                             )}
                           </div>
-                          <p className="font-medium text-lg">{notification.message}</p>
-                          <p className="text-xs text-muted-foreground mt-2">
+                          <p className="font-medium text-sm sm:text-base whitespace-normal break-words">
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
                             {formatTime(notification.createdAt)}
                           </p>
                         </div>
-                        <div className="flex gap-2">
-                          {!notification.isRead && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                await markNotificationAsRead(notification.id)
-                                setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)))
-                                toast({
-                                  title: "Thành công",
-                                  description: "Đã đánh dấu thông báo là đã đọc",
-                                })
-                              }}
-                              className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
-                            >
-                              <Check className="h-4 w-4 mr-1" />
-                              Đánh dấu đã đọc
-                            </button>
-                          )}
+                        <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-0 sm:items-center sm:flex-shrink-0 self-start"></div>
+                        {!notification.isRead && (
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation()
-                              dismissNotification(notification.id)
+                              await markNotificationAsRead(notification.id)
+                              setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)))
+                              toast({
+                                title: "Thành công",
+                                description: "Đã đánh dấu thông báo là đã đọc",
+                              })
                             }}
-                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                            className="absolute bottom-3 right-3 inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors shadow-sm"
                           >
-                            <X className="h-4 w-4" />
+                            <Check className="h-3 w-3 mr-1" />
+                            Đã đọc
                           </button>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>

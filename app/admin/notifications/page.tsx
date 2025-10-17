@@ -227,7 +227,7 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold text-[#2E3192]">Thông báo</h2>
-        <div className="flex items-center justify-between mt-1">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 items-start sm:items-center justify-between mt-1">
           <p className="text-muted-foreground">Theo dõi các thông báo và cảnh báo từ hệ thống</p>
           <button
             onClick={async () => {
@@ -239,9 +239,10 @@ export default function NotificationsPage() {
                 toast({ title: "Lỗi", description: "Không thể đánh dấu tất cả là đã đọc", variant: "destructive" })
               }
             }}
-            className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#2E3192] text-white shadow-md hover:shadow-lg transition-all duration-200 hover:bg-[#1a1d6b]"
           >
-            <Check className="h-4 w-4 mr-1" /> Đọc hết tất cả
+            <Check className="h-4 w-4" />
+            Đã đọc tất cả
           </button>
         </div>
       </div>
@@ -258,14 +259,14 @@ export default function NotificationsPage() {
 
           return (
             <div key={notification.id} className={`border-2 rounded-lg ${colorClass}`}>
-              <div className="p-6">
-                <div className="flex items-start gap-4">
+              <div className="p-4 sm:p-6 relative">
+                <div className="flex items-start gap-3 sm:gap-4">
                   <div className="p-2 rounded-lg bg-white">
-                    <Icon className="h-6 w-6" />
+                    <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3 sm:gap-4">
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border border-gray-300 bg-white capitalize">
                             {notification.type === "error"
@@ -282,7 +283,7 @@ export default function NotificationsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="font-medium text-lg">{notification.message}</p>
+                        <p className="font-medium text-sm sm:text-base whitespace-normal break-words">{notification.message}</p>
                         {locker && (
                           <p className="text-sm text-muted-foreground mt-1">
                             Tủ số: {locker.lockerNumber} - Kích thước:{" "}
@@ -300,12 +301,6 @@ export default function NotificationsPage() {
                         </p>
                       </div>
                       <div className="flex gap-2">
-                        {!notification.isRead && (
-                          <button onClick={() => handleMarkRead(notification.id)} className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors">
-                            <Check className="h-4 w-4 mr-1" />
-                            Đánh dấu đã đọc
-                          </button>
-                        )}
                         {notification.type === "error" && (
                           isErrorResolved(notification) ? (
                             <button
@@ -326,10 +321,10 @@ export default function NotificationsPage() {
                                 }
                                 router.push(`/admin/error-reports?errorId=${errorId}&highlight=true`)
                               }}
-                              className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                              className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-md bg-green-600 text-white  hover:bg-green-700 transition-colors"
                             >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Đã xử lý
+                              <CheckCircle className="h-3.5 w-3.5 mr-1 text-white" />
+                              <span className="text-white font-medium text-">Đã xử lý</span>
                             </button>
                           ) : (
                             <button
@@ -361,6 +356,16 @@ export default function NotificationsPage() {
                     </div>
                   </div>
                 </div>
+                {/* Nút nhỏ góc dưới phải cho thông báo không phải lỗi */}
+                {!notification.isRead && notification.type !== "error" && (
+                  <button 
+                    onClick={() => handleMarkRead(notification.id)}
+                    className="absolute bottom-3 right-3 inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors shadow-sm"
+                  >
+                    <Check className="h-3 w-3 mr-1" />
+                    Đã đọc
+                  </button>
+                )}
               </div>
             </div>
           )

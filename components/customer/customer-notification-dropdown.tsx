@@ -128,19 +128,19 @@ export function CustomerNotificationDropdown() {
               <div
                 key={notification.id}
                 className={cn(
-                  "p-3 sm:p-4 border-b hover:bg-gray-50 transition-colors cursor-pointer",
+                  "p-2 sm:p-3 border-b hover:bg-gray-50 transition-colors cursor-pointer",
                   !notification.isRead && "bg-blue-50",
                 )}
               >
-                <div className="flex gap-2 sm:gap-3">
-                  <span className="text-xl sm:text-2xl flex-shrink-0">{getNotificationIcon(notification.type)}</span>
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <p className={cn("text-xs sm:text-sm leading-relaxed break-words", !notification.isRead && "font-semibold")}>
+                <div className="grid grid-cols-[auto,1fr,auto] items-start gap-2 sm:gap-3">
+                  <span className="text-lg sm:text-xl leading-none flex-shrink-0">{getNotificationIcon(notification.type)}</span>
+                  <div className="min-w-0 overflow-hidden">
+                    <p className={cn("text-xs sm:text-sm leading-snug break-words line-clamp-2", !notification.isRead && "font-semibold")}>
                       {notification.message}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">{formatTime(notification.createdAt)}</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">{formatTime(notification.createdAt)}</p>
                   </div>
-                  {!notification.isRead && <div className="w-2 h-2 bg-[#2E3192] rounded-full flex-shrink-0 mt-1" />}
+                  {!notification.isRead && <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-[#2E3192] rounded-full mt-0.5" />}
                 </div>
               </div>
             ))
