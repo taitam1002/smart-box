@@ -702,6 +702,10 @@ export async function resolveErrorReport(errorId: string, adminNotes?: string) {
 // Thông báo khách hàng (chuyển từ resolved → notified)
 export async function notifyCustomerAboutErrorResolution(errorId: string, customerId: string) {
   try {
+    // Lấy thông tin error report để lấy lockerId
+    const errorDoc = await getDoc(doc(db, "errors", errorId));
+    const errorData = errorDoc.data();
+    
     // Cập nhật trạng thái lỗi
     const errorRef = doc(db, "errors", errorId);
     await updateDoc(errorRef, {
@@ -710,11 +714,13 @@ export async function notifyCustomerAboutErrorResolution(errorId: string, custom
       lastUpdated: new Date()
     });
 
-    // Tạo thông báo cho khách hàng
+    // Tạo thông báo cho khách hàng với thông tin liên kết
     const customerNotification = {
       type: "info" as const,
       message: "Lỗi bạn báo cáo đã được xử lý thành công. Cảm ơn bạn đã phản hồi!",
       customerId: customerId,
+      errorId: errorId, // Thêm errorId để liên kết
+      lockerId: errorData?.lockerId, // Thêm lockerId từ error report
       isRead: false,
       createdAt: new Date(),
     };
@@ -742,17 +748,23 @@ export async function closeErrorReport(errorId: string) {
 // Xử lý thông báo lỗi - cập nhật trạng thái và tạo thông báo cho khách hàng
 export async function handleErrorNotification(notificationId: string, errorId: string, customerId: string) {
   try {
+    // Lấy thông tin error report để lấy lockerId
+    const errorDoc = await getDoc(doc(db, "errors", errorId));
+    const errorData = errorDoc.data();
+    
     // Cập nhật trạng thái báo lỗi thành đã xử lý
     await resolveErrorReport(errorId, "Đã xử lý lỗi từ admin");
     
     // Đánh dấu thông báo đã đọc
     await markNotificationAsRead(notificationId);
     
-    // Tạo thông báo cho khách hàng
+    // Tạo thông báo cho khách hàng với thông tin liên kết
     const customerNotification = {
       type: "info" as const,
       message: "Lỗi bạn báo cáo đã được xử lý thành công. Cảm ơn bạn đã phản hồi!",
       customerId: customerId,
+      errorId: errorId, // Thêm errorId để liên kết
+      lockerId: errorData?.lockerId, // Thêm lockerId từ error report
       isRead: false,
       createdAt: new Date(),
     };

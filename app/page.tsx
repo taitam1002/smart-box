@@ -92,7 +92,7 @@ export default function LoginPage() {
         </div>
 
         {/* Welcome Text */}
-        <h1 className="text-3xl leading-relaxed font-bold text-white text-center mb-12 text-balance animate-fade-in-delay">WELCOME SMART BOX</h1>
+        <h1 className="text-3xl leading-relaxed font-bold text-white text-center mb-12 text-balance animate-fade-in-delay"> SMART BOX HCMUTE</h1>
 
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-6 animate-slide-up-delay">
@@ -167,14 +167,14 @@ export default function LoginPage() {
               disabled={loading || booting}
               className="bg-[#E31E24] hover:bg-[#C01A1F] text-white font-bold px-16 py-6 rounded-full text-lg shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {booting ? "ĐANG KHỞI TẠO..." : loading ? "ĐANG ĐĂNG NHẬP..." : "ĐĂNG NHẬP"}
+              {booting ? "ĐANG LẤY DỮ LIỆU..." : loading ? "ĐANG ĐĂNG NHẬP..." : "ĐĂNG NHẬP"}
             </Button>
           </div>
         </form>
 
         {/* Footer */}
-        <p className="text-white/70 text-md text-center mt-12 flex items-center justify-center gap-2 animate-fade-in-delay-3">
-        Một sản phẩm của TAM-DUY-K21
+        <p className="text-[#f3e402] font-bold text-md text-center mt-12 flex items-center justify-center gap-2 animate-fade-in-delay-3">
+        Một sản phẩm của TAM-DUY-K21 IoT
         <ReactCountryFlag
           countryCode="VN"
           svg

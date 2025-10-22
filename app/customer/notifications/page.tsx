@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { UnifiedPagination } from "@/components/ui/unified-pagination"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { getCurrentUser } from "@/lib/auth"
-import { Bell, Package, AlertCircle, Info, CheckCircle, Clock, X, Check } from "lucide-react"
+import { Bell, Package, AlertCircle, Info, CheckCircle, Clock, X, Check, Eye } from "lucide-react"
 import { db } from "@/lib/firebase"
-import { collection, onSnapshot, query, where } from "firebase/firestore"
+import { collection, onSnapshot, query, where, doc, getDoc, getDocs } from "firebase/firestore"
 import { findUserByEmail, markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/firestore-actions"
 import { toast } from "@/hooks/use-toast"
 
@@ -31,6 +32,9 @@ export default function CustomerNotificationsPage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [page, setPage] = useState(1)
+  const [selectedErrorDetails, setSelectedErrorDetails] = useState<any>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [loadingDetails, setLoadingDetails] = useState(false)
   const PAGE_SIZE = 10
 
   useEffect(() => {
@@ -126,6 +130,128 @@ export default function CustomerNotificationsPage() {
     if (minutes < 60) return `${minutes} phút trước`
     if (hours < 24) return `${hours} giờ trước`
     return `${days} ngày trước`
+  }
+
+  const formatDateTime = (date: Date) => {
+    return new Intl.DateTimeFormat('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).format(date)
+  }
+
+  const fetchErrorDetails = async (errorId: string) => {
+    if (!errorId) return null
+    
+    setLoadingDetails(true)
+    try {
+      const errorDoc = await getDoc(doc(db, "errors", errorId))
+      if (errorDoc.exists()) {
+        const data = errorDoc.data()
+        return {
+          id: errorDoc.id,
+          ...data,
+          createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+          resolvedAt: data?.resolvedAt?.toDate ? data.resolvedAt.toDate() : data.resolvedAt,
+          receivedAt: data?.receivedAt?.toDate ? data.receivedAt.toDate() : data.receivedAt,
+          processingStartedAt: data?.processingStartedAt?.toDate ? data.processingStartedAt.toDate() : data.processingStartedAt,
+          closedAt: data?.closedAt?.toDate ? data.closedAt.toDate() : data.closedAt,
+          customerNotifiedAt: data?.customerNotifiedAt?.toDate ? data.customerNotifiedAt.toDate() : data.customerNotifiedAt,
+        }
+      }
+      return null
+    } catch (error) {
+      console.error("Lỗi lấy thông tin chi tiết:", error)
+      return null
+    } finally {
+      setLoadingDetails(false)
+    }
+  }
+
+  const handleViewDetails = async (notification: any) => {
+    if (notification.errorId) {
+      const details = await fetchErrorDetails(notification.errorId)
+      setSelectedErrorDetails(details)
+      setIsDetailModalOpen(true)
+    } else {
+      // Nếu không có errorId, tìm error report gần nhất để lấy thông tin tủ
+      try {
+        const errorQuery = query(
+          collection(db, "errors"),
+          where("customerId", "==", user?.id),
+          where("status", "==", "resolved")
+        )
+        const errorSnapshot = await getDocs(errorQuery)
+        
+        if (!errorSnapshot.empty) {
+          // Lấy error report gần nhất với thời gian notification
+          const notificationTime = notification.createdAt.getTime()
+          const latestError = errorSnapshot.docs
+            .map(doc => {
+              const data = doc.data()
+              return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+                receivedAt: data.receivedAt?.toDate ? data.receivedAt.toDate() : data.receivedAt,
+                processingStartedAt: data.processingStartedAt?.toDate ? data.processingStartedAt.toDate() : data.processingStartedAt,
+                resolvedAt: data.resolvedAt?.toDate ? data.resolvedAt.toDate() : data.resolvedAt,
+                closedAt: data.closedAt?.toDate ? data.closedAt.toDate() : data.closedAt,
+                customerNotifiedAt: data.customerNotifiedAt?.toDate ? data.customerNotifiedAt.toDate() : data.customerNotifiedAt,
+              }
+            })
+            .sort((a, b) => {
+              // Tìm error report có thời gian gần nhất với notification
+              const timeDiffA = Math.abs(a.createdAt.getTime() - notificationTime)
+              const timeDiffB = Math.abs(b.createdAt.getTime() - notificationTime)
+              return timeDiffA - timeDiffB
+            })[0]
+          
+          setSelectedErrorDetails(latestError)
+          setIsDetailModalOpen(true)
+        } else {
+          // Fallback nếu không tìm thấy error report
+          const mockDetails = {
+            id: notification.id,
+            description: notification.message || "Lỗi đã được báo cáo và xử lý thành công bởi hệ thống",
+            status: notification.message?.includes("thành công") ? "resolved" : "pending",
+            processingStage: notification.message?.includes("thành công") ? "resolved" : "reported",
+            createdAt: notification.createdAt,
+            lockerId: notification.lockerId || "Không xác định",
+            adminNotes: "Thông báo từ hệ thống",
+            receivedAt: null,
+            processingStartedAt: null,
+            resolvedAt: notification.message?.includes("thành công") ? notification.createdAt : null,
+            closedAt: null,
+            customerNotifiedAt: null,
+          }
+          setSelectedErrorDetails(mockDetails)
+          setIsDetailModalOpen(true)
+        }
+      } catch (error) {
+        console.error("Lỗi tìm error report:", error)
+        // Fallback
+        const mockDetails = {
+          id: notification.id,
+          description: notification.message || "Lỗi đã được báo cáo và xử lý thành công bởi hệ thống",
+          status: notification.message?.includes("thành công") ? "resolved" : "pending",
+          processingStage: notification.message?.includes("thành công") ? "resolved" : "reported",
+          createdAt: notification.createdAt,
+          lockerId: notification.lockerId || "Không xác định",
+          adminNotes: "Thông báo từ hệ thống",
+          receivedAt: null,
+          processingStartedAt: null,
+          resolvedAt: notification.message?.includes("thành công") ? notification.createdAt : null,
+          closedAt: null,
+          customerNotifiedAt: null,
+        }
+        setSelectedErrorDetails(mockDetails)
+        setIsDetailModalOpen(true)
+      }
+    }
   }
 
   if (loading) {
@@ -227,7 +353,24 @@ export default function CustomerNotificationsPage() {
                             {formatTime(notification.createdAt)}
                           </p>
                         </div>
-                        <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-0 sm:items-center sm:flex-shrink-0 self-start"></div>
+                        <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-0 sm:items-center sm:flex-shrink-0 self-start">
+                          {(notification.type === "error" || 
+                            (notification.type === "info" && notification.message?.includes("xử lý")) ||
+                            (notification.type === "info" && notification.message?.includes("báo cáo"))) && (
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleViewDetails(notification)
+                              }}
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-7 px-2"
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
+                              Xem chi tiết
+                            </Button>
+                          )}
+                        </div>
                         {!notification.isRead && (
                           <button
                             onClick={async (e) => {
@@ -256,6 +399,145 @@ export default function CustomerNotificationsPage() {
         <UnifiedPagination page={page} setPage={setPage} total={notifications.length} pageSize={PAGE_SIZE} />
         </>
       )}
+
+      {/* Modal chi tiết lỗi */}
+      <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-[#2E3192]">
+              Chi tiết báo lỗi
+            </DialogTitle>
+          </DialogHeader>
+          
+          {loadingDetails ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2E3192]"></div>
+              <span className="ml-2">Đang tải thông tin...</span>
+            </div>
+          ) : selectedErrorDetails ? (
+            <div className="space-y-6">
+              {/* Thông tin cơ bản */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-3 text-gray-800">Thông tin cơ bản</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Trạng thái:</label>
+                    <Badge 
+                      variant={selectedErrorDetails.status === 'resolved' ? 'default' : 'secondary'}
+                      className={selectedErrorDetails.status === 'resolved' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
+                    >
+                      {selectedErrorDetails.status === 'resolved' ? 'Đã xử lý' : 'Đang xử lý'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Giai đoạn xử lý:</label>
+                    <p className="text-sm text-gray-800 capitalize">
+                      {selectedErrorDetails.processingStage === 'reported' ? 'Đã báo cáo' :
+                       selectedErrorDetails.processingStage === 'received' ? 'Đã tiếp nhận' :
+                       selectedErrorDetails.processingStage === 'processing' ? 'Đang xử lý' :
+                       selectedErrorDetails.processingStage === 'resolved' ? 'Đã hoàn thành' :
+                       selectedErrorDetails.processingStage === 'closed' ? 'Đã đóng' : selectedErrorDetails.processingStage}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Tủ gặp lỗi:</label>
+                    <p className="text-sm text-gray-800">{selectedErrorDetails.lockerId || 'Không xác định'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mô tả lỗi */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-3 text-gray-800">Mô tả lỗi</h3>
+                <p className="text-sm text-gray-800 bg-white p-3 rounded border">
+                  {selectedErrorDetails.description}
+                </p>
+              </div>
+
+              {/* Thời gian xử lý */}
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-3 text-gray-800">Thời gian xử lý</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Thời gian báo cáo:</label>
+                      <p className="text-sm text-gray-800">{formatDateTime(selectedErrorDetails.createdAt)}</p>
+                    </div>
+                  </div>
+                  
+                  {selectedErrorDetails.receivedAt && selectedErrorDetails.receivedAt instanceof Date && !isNaN(selectedErrorDetails.receivedAt.getTime()) && (
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Thời gian tiếp nhận:</label>
+                        <p className="text-sm text-gray-800">{formatDateTime(selectedErrorDetails.receivedAt)}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedErrorDetails.processingStartedAt && selectedErrorDetails.processingStartedAt instanceof Date && !isNaN(selectedErrorDetails.processingStartedAt.getTime()) && (
+                    <div className="flex items-center gap-3">
+                      <AlertCircle className="h-4 w-4 text-orange-600" />
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Thời gian bắt đầu xử lý:</label>
+                        <p className="text-sm text-gray-800">{formatDateTime(selectedErrorDetails.processingStartedAt)}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedErrorDetails.resolvedAt && selectedErrorDetails.resolvedAt instanceof Date && !isNaN(selectedErrorDetails.resolvedAt.getTime()) && (
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Thời gian hoàn thành:</label>
+                        <p className="text-sm text-gray-800">{formatDateTime(selectedErrorDetails.resolvedAt)}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedErrorDetails.closedAt && selectedErrorDetails.closedAt instanceof Date && !isNaN(selectedErrorDetails.closedAt.getTime()) && (
+                    <div className="flex items-center gap-3">
+                      <X className="h-4 w-4 text-gray-600" />
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Thời gian đóng:</label>
+                        <p className="text-sm text-gray-800">{formatDateTime(selectedErrorDetails.closedAt)}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hiển thị thông báo nếu không có chi tiết đầy đủ */}
+                  {!selectedErrorDetails.receivedAt && !selectedErrorDetails.processingStartedAt && 
+                   !selectedErrorDetails.resolvedAt && !selectedErrorDetails.closedAt && (
+                    <div className="bg-blue-100 p-3 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        <Info className="h-4 w-4 inline mr-2" />
+                        Thông báo này được tạo tự động bởi hệ thống. 
+                        Để xem chi tiết đầy đủ về quá trình xử lý, vui lòng liên hệ quản trị viên.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Ghi chú admin */}
+              {selectedErrorDetails.adminNotes && (
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h3 className="font-semibold text-lg mb-3 text-gray-800">Ghi chú từ quản trị viên</h3>
+                  <p className="text-sm text-gray-800 bg-white p-3 rounded border">
+                    {selectedErrorDetails.adminNotes}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <AlertCircle className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-gray-600">Không tìm thấy thông tin chi tiết</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
