@@ -58,6 +58,22 @@ export default function AdminDashboardPage() {
     return orderDate.getTime() === today.getTime()
   }).length
   
+  // Định dạng thời gian cho mục Hoạt động gần đây
+  const formatActivityTime = (input: any) => {
+    const d = new Date(input)
+    const now = new Date()
+    const isSameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+
+    const time = d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+    if (isSameDay) return time
+
+    const dateStr = d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })
+    return `${time} · ${dateStr}`
+  }
+
 
   const stats = [
     {
@@ -172,10 +188,7 @@ export default function AdminDashboardPage() {
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {new Date(order.createdAt).toLocaleTimeString("vi-VN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatActivityTime(order.createdAt)}
                   </span>
                 </div>
               ))}
