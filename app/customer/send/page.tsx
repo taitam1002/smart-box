@@ -27,6 +27,12 @@ export default function SendPackagePage() {
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [modalMessage, setModalMessage] = useState("")
   const [modalTitle, setModalTitle] = useState("")
+  
+  // Modal cho thông báo thông tin trùng
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  
+  // State để control tab
+  const [activeTab, setActiveTab] = useState("send")
 
   const [sendFormData, setSendFormData] = useState({
     receiverName: "",
@@ -80,6 +86,15 @@ export default function SendPackagePage() {
     setLoading(true)
 
     try {
+      // Kiểm tra thông tin người nhận có trùng với người gửi không
+      const isNameDuplicate = sendFormData.receiverName.toLowerCase().trim() === user?.name?.toLowerCase().trim()
+      const isPhoneDuplicate = sendFormData.receiverPhone === user?.phone
+      
+      if (isNameDuplicate || isPhoneDuplicate) {
+        setLoading(false)
+        setShowDuplicateModal(true)
+        return
+      }
       // Đảm bảo có senderId
       let senderId = user?.id
       if (!senderId && user?.email) {
@@ -345,7 +360,7 @@ export default function SendPackagePage() {
         <p className="text-muted-foreground mt-1">Gửi hàng hoặc giữ hàng trong tủ thông minh</p>
       </div>
 
-      <Tabs defaultValue="send" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="send" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
@@ -530,6 +545,53 @@ export default function SendPackagePage() {
             </div>
             <p className="mt-6 text-sm text-muted-foreground text-center">Đang chờ xác thực vân tay...</p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Info Modal */}
+      <Dialog open={showDuplicateModal} onOpenChange={setShowDuplicateModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <Package className="h-5 w-5" />
+              Thông tin trùng lặp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <p className="text-sm text-orange-800 font-medium mb-2">
+                Thông tin người nhận trùng với thông tin của bạn!
+              </p>
+              <p className="text-sm text-orange-700">
+                Vui lòng sử dụng tính năng "Giữ hàng" thay vì "Gửi hàng" để tránh tốn tài nguyên.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button 
+              onClick={() => setShowDuplicateModal(false)}
+              variant="outline"
+              className="flex-1"
+            >
+              Hủy
+            </Button>
+            <Button 
+              onClick={() => {
+                setShowDuplicateModal(false)
+                // Chuyển sang tab giữ hàng và điền thông tin
+                setHoldFormData({
+                  receiverName: sendFormData.receiverName,
+                  receiverPhone: sendFormData.receiverPhone,
+                  lockerSize: sendFormData.lockerSize
+                })
+                // Chuyển sang tab giữ hàng
+                setActiveTab("hold")
+              }}
+              className="flex-1 bg-[#2E3192] hover:bg-[#252876] text-white"
+            >
+              Chuyển sang Giữ hàng
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
