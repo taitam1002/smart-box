@@ -430,16 +430,6 @@ export default function CustomerNotificationsPage() {
                     </Badge>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-600">Giai đoạn xử lý:</label>
-                    <p className="text-sm text-gray-800 capitalize">
-                      {selectedErrorDetails.processingStage === 'reported' ? 'Đã báo cáo' :
-                       selectedErrorDetails.processingStage === 'received' ? 'Đã tiếp nhận' :
-                       selectedErrorDetails.processingStage === 'processing' ? 'Đang xử lý' :
-                       selectedErrorDetails.processingStage === 'resolved' ? 'Đã hoàn thành' :
-                       selectedErrorDetails.processingStage === 'closed' ? 'Đã đóng' : selectedErrorDetails.processingStage}
-                    </p>
-                  </div>
-                  <div>
                     <label className="text-sm font-medium text-gray-600">Tủ gặp lỗi:</label>
                     <p className="text-sm text-gray-800">{selectedErrorDetails.lockerId || 'Không xác định'}</p>
                   </div>
