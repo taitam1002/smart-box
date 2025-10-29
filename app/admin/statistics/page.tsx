@@ -164,9 +164,12 @@ export default function StatisticsPage() {
     return locker?.size === "large"
   }).length
 
-  const smallPercentage = smallLockers > 0 ? Math.round((smallUsage / smallLockers) * 100) : 0
-  const mediumPercentage = mediumLockers > 0 ? Math.round((mediumUsage / mediumLockers) * 100) : 0
-  const largePercentage = largeLockers > 0 ? Math.round((largeUsage / largeLockers) * 100) : 0
+  // Thang động theo bội số 100 dựa trên lượt sử dụng lớn nhất
+  const maxSizeUsage = Math.max(smallUsage, mediumUsage, largeUsage, 0)
+  const dynamicScale = Math.max(100, Math.ceil(maxSizeUsage / 100) * 100)
+  const smallWidth = Math.round((smallUsage / dynamicScale) * 100)
+  const mediumWidth = Math.round((mediumUsage / dynamicScale) * 100)
+  const largeWidth = Math.round((largeUsage / dynamicScale) * 100)
 
   // Thống kê theo loại người dùng
   const shipperOrders = orders.filter(o => o.senderType === "shipper").length
@@ -297,7 +300,7 @@ export default function StatisticsPage() {
         {/* Usage by Locker Size - Responsive */}
         <Card className="hover:shadow-lg transition-shadow duration-200">
           <CardHeader>
-            <CardTitle className="text-base sm:text-lg">Thống kê theo kích thước tủ</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Lượt sử dụng theo kích thước tủ</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -305,29 +308,30 @@ export default function StatisticsPage() {
                 <span className="text-sm font-medium">Tủ nhỏ</span>
                 <div className="flex items-center gap-4">
                   <div className="w-full sm:w-64 h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500" style={{ width: `${smallPercentage}%` }} />
+                    <div className="h-full bg-blue-500" style={{ width: `${smallWidth}%` }} />
                   </div>
-                  <span className="text-sm font-medium w-12 text-right">{smallPercentage}%</span>
+                  <span className="text-sm font-medium w-20 text-right">{smallUsage}/{dynamicScale}</span>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-sm font-medium">Tủ vừa</span>
                 <div className="flex items-center gap-4">
                   <div className="w-full sm:w-64 h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500" style={{ width: `${mediumPercentage}%` }} />
+                    <div className="h-full bg-green-500" style={{ width: `${mediumWidth}%` }} />
                   </div>
-                  <span className="text-sm font-medium w-12 text-right">{mediumPercentage}%</span>
+                  <span className="text-sm font-medium w-20 text-right">{mediumUsage}/{dynamicScale}</span>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-sm font-medium">Tủ lớn</span>
                 <div className="flex items-center gap-4">
                   <div className="w-full sm:w-64 h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-purple-500" style={{ width: `${largePercentage}%` }} />
+                    <div className="h-full bg-purple-500" style={{ width: `${largeWidth}%` }} />
                   </div>
-                  <span className="text-sm font-medium w-12 text-right">{largePercentage}%</span>
+                  <span className="text-sm font-medium w-20 text-right">{largeUsage}/{dynamicScale}</span>
                 </div>
               </div>
+              {/* <p className="text-xs text-muted-foreground">Thang hiển thị tối đa: {dynamicScale} lượt</p> */}
             </div>
           </CardContent>
         </Card>
