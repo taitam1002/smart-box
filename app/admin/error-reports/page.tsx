@@ -10,6 +10,8 @@ import { UnifiedPagination } from "@/components/ui/unified-pagination"
 import { getErrorReports, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport } from "@/lib/firestore-actions"
 import { AlertCircle, Check, Play, CheckCircle, Bell, Lock, Clock, User } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { Input } from "@/components/ui/input"
+import { Search } from "lucide-react"
 import type { ErrorReport, ErrorStatus, ErrorProcessingStage } from "@/lib/types"
 
 const statusColors: Record<ErrorStatus, string> = {
@@ -192,12 +194,15 @@ function ErrorReportsContent() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center gap-2">
-            <input
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-              placeholder="Tìm theo khách hàng, ID, tủ, mô tả, trạng thái..."
-              className="w-full rounded-md border px-3 py-2"
-            />
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+                placeholder="Tìm theo khách hàng, ID, tủ, mô tả, trạng thái..."
+                className="pl-10"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

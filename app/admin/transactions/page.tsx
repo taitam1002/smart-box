@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { UnifiedPagination } from "@/components/ui/unified-pagination"
@@ -102,12 +104,15 @@ export default function TransactionsPage() {
         <CardContent className="pt-6">
           {/* Search */}
           <div className="mb-4">
-            <input
-              placeholder="Tìm theo tên, SĐT, mã đơn, số tủ..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full md:w-96 border rounded px-3 py-2"
-            />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Tìm theo tên, SĐT, mã đơn, số tủ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </div>
           <Table>
             <TableHeader>
