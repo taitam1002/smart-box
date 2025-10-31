@@ -183,7 +183,7 @@ export default function StatisticsPage() {
     <div className="min-h-screen bg-gray-50/50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="text-center sm:text-left">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#2E3192]">Báo cáo thống kê</h2>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#2E3192] line-clamp-2 break-words" title="Báo cáo thống kê">Báo cáo thống kê</h2>
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">Thống kê chi tiết về việc sử dụng hệ thống tủ</p>
         </div>
 
@@ -267,7 +267,11 @@ export default function StatisticsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
                 <YAxis allowDecimals={false} />
-                <ChartTooltip content={<ChartTooltipContent nameKey="count" />} />
+                <ChartTooltip
+                  wrapperStyle={{ pointerEvents: "none" }}
+                  cursor={{ fill: "transparent" }}
+                  content={<ChartTooltipContent nameKey="count" />}
+                />
                 <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>
@@ -289,7 +293,11 @@ export default function StatisticsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="locker" />
                 <YAxis allowDecimals={false} />
-                <ChartTooltip content={<ChartTooltipContent nameKey="count" />} />
+                <ChartTooltip
+                  wrapperStyle={{ pointerEvents: "none" }}
+                  cursor={{ fill: "transparent" }}
+                  content={<ChartTooltipContent nameKey="count" />}
+                />
                 <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>

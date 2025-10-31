@@ -138,7 +138,7 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold text-[#2E3192]">Quản lý khách hàng</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-[#2E3192] line-clamp-2 break-words" title="Quản lý khách hàng">Quản lý khách hàng</h2>
         <p className="text-muted-foreground mt-1">Quản lý tài khoản và quyền truy cập của khách hàng</p>
       </div>
 

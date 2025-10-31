@@ -135,6 +135,15 @@
     @apply w-[calc(100vw-2rem)] max-w-sm sm:w-96;
   }
   
+  /* Clamp text to two lines with ellipsis (without Tailwind plugin) */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  
   /* Breakpoint for extra small screens */
   @media (min-width: 475px) {
     .xs\:inline {

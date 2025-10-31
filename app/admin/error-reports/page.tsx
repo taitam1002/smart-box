@@ -186,7 +186,7 @@ function ErrorReportsContent() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold text-[#2E3192]">Quản lý báo lỗi</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-[#2E3192] line-clamp-2 break-words" title="Quản lý báo lỗi">Quản lý báo lỗi</h2>
         <p className="text-muted-foreground mt-1">Theo dõi và xử lý các báo lỗi từ khách hàng</p>
       </div>
 

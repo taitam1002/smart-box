@@ -28,10 +28,10 @@ export function AdminHeader() {
             <Image src="/images/hcmute-logo.jpg" alt="HCMUTE" fill className="object-contain" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-sm sm:text-xl font-bold text-[#2E3192] truncate">
-              HỆ THỐNG QUẢN LÝ TỦ THÔNG MINH
+            <h1 className="text-sm sm:text-xl font-bold text-[#2E3192] line-clamp-2 break-words" title="HỆ THỐNG QUẢN LÝ TỦ THÔNG MINH">
+              SMART BOX 
             </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
+            <p className="text-[10px] xs:text-xs sm:text-sm text-muted-foreground line-clamp-1">
               HCMUTE Smart Box Management
             </p>
           </div>
@@ -53,17 +53,15 @@ export function AdminHeader() {
           <div className="hidden md:flex lg:hidden items-center gap-4">
             <RealTimeClock />
             <NotificationDropdown />
-            <div className="text-right">
-              <p className="text-sm font-medium truncate max-w-32">{user?.name}</p>
+            <div className="text-right max-w-[12rem]">
+              <p className="text-sm font-medium truncate" title={user?.name}>{user?.name}</p>
             </div>
           </div>
 
           {/* Mobile: Minimal info */}
           <div className="flex md:hidden items-center gap-2">
             <NotificationDropdown />
-            <div className="text-right">
-              <p className="text-xs font-medium truncate max-w-20">{user?.name}</p>
-            </div>
+            <p className="text-xs font-medium truncate max-w-[9rem]" title={user?.name}>{user?.name}</p>
           </div>
 
         </div>
