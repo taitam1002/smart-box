@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Allow read if authenticated and (own profile or admin)
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      
+      // Allow create if authenticated (for registration)
+      // Also allow if not authenticated (for initial user creation during seeding)
+      allow create: if isAuthenticated() || request.auth == null;
+      
+      // Allow update if own profile or admin
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      
+      // Allow delete only for admin
+      allow delete: if isAdmin();
+    }
+    
+    // Lockers collection
+    match /lockers/{lockerId} {
+      // Everyone authenticated can read
+      allow read: if isAuthenticated();
+      
+      // Allow create/update/delete for admin or during seeding
+      allow create, update, delete: if isAdmin() || request.auth == null;
+    }
+    
+    // Transactions collection
+    match /transactions/{transactionId} {
+      // Allow read if authenticated and (own transaction or admin)
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Allow create if authenticated
+      allow create: if isAuthenticated();
+      
+      // Allow update if admin or owner
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.senderId == request.auth.uid
+      );
+      
+      // Allow delete only for admin
+      allow delete: if isAdmin();
+    }
+    
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Allow read if authenticated and (own notification or admin)
+      allow read: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid || 
+        isAdmin() ||
+        resource.data.customerId == null // Admin notifications
+      );
+      
+      // Allow create if authenticated
+      allow create: if isAuthenticated();
+      
+      // Allow update if own notification or admin
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.customerId == request.auth.uid
+      );
+      
+      // Allow delete if own notification or admin
+      allow delete: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.customerId == request.auth.uid
+      );
+    }
+    
+    // Error reports collection
+    match /errors/{errorId} {
+      // Allow read if authenticated and (own report or admin)
+      allow read: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Allow create if authenticated
+      allow create: if isAuthenticated();
+      
+      // Only admin can update/delete
+      allow update, delete: if isAdmin();
+    }
+    
+    // Settings collection
+    match /settings/{settingId} {
+      // Everyone authenticated can read
+      allow read: if isAuthenticated();
+      
+      // Only admin can write
+      allow write: if isAdmin();
+    }
+    
+    // Meta collection (for seed status, etc.)
+    match /_meta/{document=**} {
+      // Allow read/write for admin or during seeding
+      allow read, write: if isAdmin() || request.auth == null;
+    }
+    
+    // Default: deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

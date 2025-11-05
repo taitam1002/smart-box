@@ -97,7 +97,6 @@ export default function TransactionsPage() {
       <div>
         <h2 className="text-2xl sm:text-3xl font-bold text-[#2E3192] line-clamp-2 break-words" title="Lịch sử giao dịch">Lịch sử giao dịch</h2>
         <p className="text-muted-foreground mt-1">Xem lịch sử tất cả các giao dịch trong hệ thống</p>
-        {/* <p className="text-medium text-[#2E3192] mt-1 font-bold">Tổng số giao dịch: {orders.length}</p> */}
       </div>
 
       <Card>
