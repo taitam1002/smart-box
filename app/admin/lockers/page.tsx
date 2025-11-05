@@ -532,7 +532,7 @@ export default function LockersPage() {
                         <div className="space-y-2">
                           <div>
                             <Label className="text-sm font-medium text-muted-foreground">Mô tả lỗi:</Label>
-                            <p className="text-sm mt-1 bg-gray-50 p-3 rounded border">
+                            <p className="text-sm mt-1 bg-gray-50 p-3 rounded border break-words overflow-wrap-anywhere">
                               {report.description}
                             </p>
                           </div>

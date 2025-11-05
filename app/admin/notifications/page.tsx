@@ -124,6 +124,21 @@ export default function NotificationsPage() {
   }
 
   // Check if error is resolved
+  const truncateErrorMessage = (message: string) => {
+    // Tìm vị trí "báo lỗi:" (không phân biệt hoa thường)
+    const match = message.match(/(.*?báo lỗi:\s*)(.+)/i)
+    if (match) {
+      const prefix = match[1] // Phần trước "báo lỗi:"
+      const errorText = match[2] // Phần sau "báo lỗi:"
+      
+      // Nếu phần sau "báo lỗi:" dài hơn 20 ký tự, truncate
+      if (errorText.length > 20) {
+        return prefix + errorText.substring(0, 20) + "..."
+      }
+    }
+    return message
+  }
+
   const isErrorResolved = (notification: any) => {
     // Tìm errorId từ notification
     let errorId = notification.errorId
@@ -283,7 +298,11 @@ export default function NotificationsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="font-medium text-sm sm:text-base whitespace-normal break-words">{notification.message}</p>
+                        <p className="font-medium text-sm sm:text-base whitespace-normal break-words">
+                          {notification.type === "error" 
+                            ? truncateErrorMessage(notification.message)
+                            : notification.message}
+                        </p>
                         {locker && (
                           <p className="text-sm text-muted-foreground mt-1">
                             Tủ số: {locker.lockerNumber} - Kích thước:{" "}

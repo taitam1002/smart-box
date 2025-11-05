@@ -144,6 +144,13 @@
     overflow: hidden;
   }
   
+  /* Word wrap for long text on mobile */
+  .word-wrap {
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  
   /* Breakpoint for extra small screens */
   @media (min-width: 475px) {
     .xs\:inline {

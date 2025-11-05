@@ -7,11 +7,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { UnifiedPagination } from "@/components/ui/unified-pagination"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { getErrorReports, receiveErrorReport, startProcessingError, resolveErrorReport, notifyCustomerAboutErrorResolution, closeErrorReport } from "@/lib/firestore-actions"
-import { AlertCircle, Check, Play, CheckCircle, Bell, Lock, Clock, User } from "lucide-react"
+import { AlertCircle, Check, Play, CheckCircle, Bell, Lock, Clock, User, Eye } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
+import { Label } from "@/components/ui/label"
 import type { ErrorReport, ErrorStatus, ErrorProcessingStage } from "@/lib/types"
 
 const statusColors: Record<ErrorStatus, string> = {
@@ -44,7 +46,10 @@ function ErrorReportsContent() {
   const [highlightedErrorId, setHighlightedErrorId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(1)
+  const [selectedErrorReport, setSelectedErrorReport] = useState<ErrorReport | null>(null)
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
   const PAGE_SIZE = 10
+  const MAX_DESCRIPTION_LENGTH = 50
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -251,7 +256,27 @@ function ErrorReportsContent() {
                       {report.lockerId ? `Tủ ${report.lockerId}` : "Không xác định"}
                     </TableCell>
                     <TableCell className="max-w-xs">
-                      <p className="text-sm truncate">{report.description}</p>
+                      {report.description && report.description.length > MAX_DESCRIPTION_LENGTH ? (
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                          <p className="text-sm truncate flex-1 min-w-0">
+                            {report.description.substring(0, MAX_DESCRIPTION_LENGTH)}...
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedErrorReport(report)
+                              setIsDetailDialogOpen(true)
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 h-auto px-2 py-1 flex-shrink-0 whitespace-nowrap"
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Xem chi tiết
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="text-sm">{report.description || "-"}</p>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge className={`${statusColors[report.status]} text-white`}>
@@ -303,6 +328,26 @@ function ErrorReportsContent() {
       </Card>
 
       <UnifiedPagination page={page} setPage={setPage} total={filterReports(errorReports, search).length} pageSize={PAGE_SIZE} />
+
+      {/* Dialog hiển thị chi tiết mô tả lỗi */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-blue-600" />
+              Mô tả lỗi
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedErrorReport && (
+            <div className="mt-4">
+              <p className="text-sm word-wrap whitespace-pre-wrap text-foreground leading-relaxed">
+                {selectedErrorReport.description}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

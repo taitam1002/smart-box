@@ -244,9 +244,9 @@ export default function ReportErrorPage() {
               <div className="space-y-4">
                 {myReports.slice((page-1)*PAGE_SIZE, (page-1)*PAGE_SIZE + PAGE_SIZE).map((report) => (
                   <div key={report.id} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium">{report.description}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium word-wrap">{report.description}</p>
                         {report.lockerId && (
                           <p className="text-sm text-muted-foreground mt-1">
                             Tủ: {lockers.find((l) => l.id === report.lockerId)?.lockerNumber}
@@ -262,7 +262,7 @@ export default function ReportErrorPage() {
                           )}
                         </div>
                       </div>
-                      <div>
+                      <div className="flex-shrink-0">
                         {report.status === "pending" ? (
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                             <AlertCircle className="h-3 w-3" />
