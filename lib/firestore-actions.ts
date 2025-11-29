@@ -1,7 +1,35 @@
+export async function getLatestDeliveryInfoByLocker(lockerNumber: string) {
+  try {
+    const normalized = lockerNumber?.trim()?.toUpperCase()
+    if (!normalized) return null
+
+    const deliveryQuery = query(
+      collection(db, "delivery_info"),
+      where("lockerNumber", "==", normalized),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    )
+    const snap = await getDocs(deliveryQuery)
+    if (snap.empty) return null
+
+    const docSnap = snap.docs[0]
+    const data: any = docSnap.data()
+    if (!data?.fingerprintVerified) return null
+
+    return {
+      id: docSnap.id,
+      ...data,
+      createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+    }
+  } catch (error) {
+    console.error("Lỗi lấy delivery_info theo locker:", error)
+    return null
+  }
+}
 
 import { db } from "@/lib/firebase";
-import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc, writeBatch } from "firebase/firestore";
-import type { User, Order, ErrorReport, Notification, Locker } from "@/lib/types";
+import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc, writeBatch, deleteField, limit } from "firebase/firestore";
+import type { User, Order, ErrorReport, Notification, Locker, DeliveryInfo, DoorStatus } from "@/lib/types";
 
 // Lưu thông tin tài khoản người dùng
 export async function saveUser(user: User) {
@@ -44,6 +72,7 @@ export async function saveLocker(locker: Locker) {
   const payload: Locker = {
     ...locker,
     lockerNumber: normalizedNumber,
+    door: locker.door || "closed", // Mặc định door = "closed" nếu chưa có
     lastUpdated: new Date(),
   } as Locker
 
@@ -55,6 +84,43 @@ export async function saveLocker(locker: Locker) {
 // Lưu thông báo hệ thống
 export async function saveNotification(notification: Omit<Notification, "id">) {
   return await addDoc(collection(db, "notifications"), notification);
+}
+
+// Lưu thông tin giao hàng (số điện thoại, loại tủ, mã tủ, tên)
+export async function saveDeliveryInfo(deliveryInfo: Omit<DeliveryInfo, "id">): Promise<string> {
+  const docRef = await addDoc(collection(db, "delivery_info"), deliveryInfo);
+  return docRef.id;
+}
+
+// Cập nhật thông tin giao hàng
+export async function updateDeliveryInfo(deliveryInfoId: string, updates: Partial<Omit<DeliveryInfo, "id">>): Promise<void> {
+  const docRef = doc(db, "delivery_info", deliveryInfoId);
+  await updateDoc(docRef, updates);
+}
+
+// Xóa thông tin giao hàng
+export async function deleteDeliveryInfo(deliveryInfoId: string): Promise<void> {
+  const docRef = doc(db, "delivery_info", deliveryInfoId);
+  await deleteDoc(docRef);
+}
+
+// Lấy delivery_info của một người dùng (để tạo transaction nếu chưa có)
+export async function getUserDeliveryInfo(userId: string): Promise<DeliveryInfo[]> {
+  const q = query(
+    collection(db, "delivery_info"), 
+    where("senderId", "==", userId),
+    where("deliveryType", "==", "giu"), // Chỉ lấy đơn giữ hàng
+    where("fingerprintVerified", "==", true) // Chỉ lấy đơn đã xác thực vân tay
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map((docSnap) => {
+    const data: any = docSnap.data()
+    return {
+      id: docSnap.id,
+      ...data,
+      createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+    } as DeliveryInfo
+  })
 }
 
 // Tạo thông báo đăng xuất
@@ -209,9 +275,65 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   return { id: d.id, ...(d.data() as Omit<User, "id">) } as User
 }
 
+// Cập nhật tất cả tủ hiện có để thêm trường door nếu chưa có
+export async function updateAllLockersWithDoorField() {
+  try {
+    const querySnapshot = await getDocs(collection(db, "lockers"));
+    const batch = writeBatch(db);
+    let updateCount = 0;
+
+    querySnapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.door === undefined || data.door === null) {
+        batch.update(docSnap.ref, {
+          door: "closed",
+          lastUpdated: new Date()
+        });
+        updateCount++;
+      }
+    });
+
+    if (updateCount > 0) {
+      await batch.commit();
+      console.log(`✅ Đã cập nhật ${updateCount} tủ với trường door = "closed"`);
+    } else {
+      console.log("✅ Tất cả tủ đã có trường door");
+    }
+
+    return { updated: updateCount };
+  } catch (error) {
+    console.error("❌ Lỗi khi cập nhật trường door cho tủ:", error);
+    throw error;
+  }
+}
+
 // Lấy tất cả tủ thông minh
 export async function getLockers(): Promise<Locker[]> {
   const querySnapshot = await getDocs(collection(db, "lockers"));
+
+  // Xóa các field legacy currentHolder* nếu còn sót
+  const cleanupPromises: Promise<any>[] = []
+  querySnapshot.docs.forEach((docSnap) => {
+    const data = docSnap.data() as any
+    const updates: any = {}
+    if (data.currentHolder !== undefined) updates.currentHolder = deleteField()
+    if (data.currentHolderId !== undefined) updates.currentHolderId = deleteField()
+    if (data.currentHolderName !== undefined) updates.currentHolderName = deleteField()
+    if (data.currentHolderPhone !== undefined) updates.currentHolderPhone = deleteField()
+    if (data.currentTransactionType !== undefined) updates.currentTransactionType = deleteField()
+    if (Object.keys(updates).length > 0) {
+      cleanupPromises.push(
+        updateDoc(doc(db, "lockers", docSnap.id), updates).catch((err) =>
+          console.error(`⚠️ Không thể xóa field legacy ở tủ ${docSnap.id}:`, err)
+        )
+      )
+    }
+  })
+  if (cleanupPromises.length > 0) {
+    await Promise.all(cleanupPromises)
+    console.log(`🧹 Đã dọn ${cleanupPromises.length} tủ khỏi field currentHolder legacy`)
+  }
+
   const lockers = querySnapshot.docs
     .map((docSnap) => {
       const data: any = docSnap.data()
@@ -220,10 +342,22 @@ export async function getLockers(): Promise<Locker[]> {
         id: docSnap.id, // ensure Firestore doc id wins over any stored id field
         status: typeof data.status === "string" ? data.status.trim() : data.status,
         lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber,
+        door: data.door || "closed", // Mặc định door = "closed" nếu chưa có
         lastUpdated: data?.lastUpdated?.toDate ? data.lastUpdated.toDate() : data.lastUpdated,
       } as Locker
     })
     .filter((locker) => locker && locker.lockerNumber) // Lọc bỏ các tủ không hợp lệ
+
+  // Tự động cập nhật trường door cho các tủ chưa có
+  const lockersWithoutDoor = lockers.filter(l => !l.door || (l as any).door === undefined)
+  if (lockersWithoutDoor.length > 0) {
+    console.log(`⚠️ Phát hiện ${lockersWithoutDoor.length} tủ chưa có trường door, đang cập nhật...`)
+    try {
+      await updateAllLockersWithDoorField()
+    } catch (e) {
+      console.error("Lỗi cập nhật trường door:", e)
+    }
+  }
 
   // Kiểm tra và tạo lại tủ A1-A6 nếu thiếu
   const requiredLockers = ["A1", "A2", "A3", "A4", "A5", "A6"]
@@ -240,6 +374,7 @@ export async function getLockers(): Promise<Locker[]> {
           lockerNumber,
           status: "available",
           size,
+          door: "closed", // Mặc định cửa đóng
           lastUpdated: new Date()
         })
         console.log(`✅ Đã tạo lại tủ ${lockerNumber}`)
@@ -258,6 +393,7 @@ export async function getLockers(): Promise<Locker[]> {
           id: docSnap.id,
           status: typeof data.status === "string" ? data.status.trim() : data.status,
           lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber,
+          door: data.door || "closed", // Mặc định door = "closed" nếu chưa có
           lastUpdated: data?.lastUpdated?.toDate ? data.lastUpdated.toDate() : data.lastUpdated,
         } as Locker
       })
@@ -266,6 +402,7 @@ export async function getLockers(): Promise<Locker[]> {
 
   return lockers
 }
+
 
 // Lấy tất cả giao dịch
 export async function getTransactions(): Promise<Order[]> {
@@ -404,23 +541,135 @@ export async function updateLockerTimestamp(lockerId: string) {
 }
 
 // Cập nhật trạng thái tủ - CHỈ cập nhật trạng thái, KHÔNG reset dữ liệu
-export async function updateLockerStatus(lockerId: string, status: string, orderId?: string) {
-  const lockerRef = doc(db, "lockers", lockerId);
-  const updateData: any = { 
-    status, 
-    lastUpdated: new Date() 
-  };
+type UpdateLockerStatusOptions = {
+  doorState?: DoorStatus
+}
+
+export async function updateLockerStatus(
+  lockerId: string,
+  status: string,
+  orderId?: string,
+  options?: UpdateLockerStatusOptions
+) {
+  // Thử với lockerId trước (có thể là document ID hoặc lockerNumber)
+  let lockerRef = doc(db, "lockers", lockerId);
   
-  // Chỉ cập nhật currentOrderId nếu được cung cấp
-  if (orderId !== undefined) {
-    updateData.currentOrderId = orderId;
-  } else if (status === "available") {
-    // Khi tủ trở về trạng thái available, xóa currentOrderId
-    updateData.currentOrderId = null;
+  try {
+    const updateData: any = { 
+      status, 
+      lastUpdated: new Date(),
+      // Quy ước mặc định: occupied -> open, ngược lại closed
+      door: options?.doorState ?? (status === "occupied" ? "open" : "closed"),
+    };
+    
+    // Chỉ cập nhật currentOrderId nếu được cung cấp
+    if (orderId !== undefined) {
+      updateData.currentOrderId = orderId;
+    } else if (status === "available") {
+      // Khi tủ trở về trạng thái available, xóa currentOrderId
+      updateData.currentOrderId = null;
+    }
+    
+    // Luôn xóa các trường giữ thông tin người dùng để tránh sót dữ liệu
+    updateData.currentHolder = deleteField()
+    updateData.currentHolderId = deleteField()
+    updateData.currentHolderName = deleteField()
+    updateData.currentHolderPhone = deleteField()
+    updateData.currentTransactionType = deleteField()
+    
+    await updateDoc(lockerRef, updateData);
+    console.log(`✅ Cập nhật tủ ${lockerId}: ${status}${orderId ? ` (Order: ${orderId})` : ''}`);
+  } catch (error: any) {
+    // Nếu lỗi "document not found", có thể document ID là lockerNumber
+    if (error?.code === 'not-found' || error?.message?.includes('not found')) {
+      console.log(`⚠️ Không tìm thấy tủ với ID ${lockerId}, có thể cần dùng lockerNumber`)
+      throw error; // Re-throw để caller xử lý
+    } else {
+      throw error;
+    }
   }
-  
-  await updateDoc(lockerRef, updateData);
-  console.log(`✅ Cập nhật tủ ${lockerId}: ${status}${orderId ? ` (Order: ${orderId})` : ''}`);
+}
+
+// Hàm để fix trạng thái tủ cho các transaction đã có nhưng tủ chưa được cập nhật
+// CHỈ cập nhật nếu tủ đang available VÀ chưa có transaction khác đang sử dụng
+export async function fixLockerStatusForTransactions() {
+  try {
+    // Lấy tất cả transactions có status "delivered" (cả "send" và "hold")
+    const txQuery = query(
+      collection(db, "transactions"),
+      where("status", "==", "delivered")
+    );
+    const txSnapshot = await getDocs(txQuery);
+    
+    console.log(`🔍 Tìm thấy ${txSnapshot.size} đơn chưa lấy`);
+    
+    for (const txDoc of txSnapshot.docs) {
+      const txData = txDoc.data();
+      const lockerId = txData.lockerId;
+      const orderId = txDoc.id;
+      
+      if (!lockerId) continue;
+      
+      // Lấy thông tin tủ
+      let lockerRef = doc(db, "lockers", lockerId);
+      let lockerSnap = await getDoc(lockerRef);
+      
+      // Nếu không tìm thấy với lockerId, thử tìm bằng lockerNumber
+      if (!lockerSnap.exists()) {
+        const lockerQuery = query(
+          collection(db, "lockers"),
+          where("lockerNumber", "==", lockerId)
+        );
+        const lockerQuerySnap = await getDocs(lockerQuery);
+        
+        if (!lockerQuerySnap.empty) {
+          lockerRef = lockerQuerySnap.docs[0].ref;
+          lockerSnap = await getDoc(lockerRef);
+        }
+      }
+      
+      if (!lockerSnap.exists()) {
+        console.log(`⚠️ Không tìm thấy tủ với ID ${lockerId}, bỏ qua transaction ${orderId}`);
+        continue;
+      }
+      
+      const lockerData = lockerSnap.data();
+      const currentStatus = lockerData.status?.trim() || "available";
+      const currentOrderId = lockerData.currentOrderId;
+      
+      // QUAN TRỌNG: Chỉ cập nhật nếu:
+      // 1. Tủ đang ở trạng thái "available" (chưa bị chiếm bởi đơn khác)
+      // 2. Tủ chưa có currentOrderId hoặc currentOrderId trùng với orderId hiện tại
+      // 3. Transaction chưa được picked_up
+      if (currentStatus === "available" && (!currentOrderId || currentOrderId === orderId)) {
+        await updateDoc(lockerRef, {
+          status: "occupied",
+          currentOrderId: orderId,
+          currentHolder: deleteField(),
+          currentHolderId: deleteField(),
+          currentHolderName: deleteField(),
+          currentHolderPhone: deleteField(),
+          currentTransactionType: deleteField(),
+          lastUpdated: new Date()
+        });
+        console.log(`✅ Đã fix trạng thái tủ ${lockerData.lockerNumber || lockerId} -> occupied (Order: ${orderId})`);
+      } else if (currentStatus === "occupied" && currentOrderId === orderId) {
+        // Tủ đã được cập nhật đúng, không cần làm gì
+        console.log(`✓ Tủ ${lockerData.lockerNumber || lockerId} đã được cập nhật đúng với Order: ${orderId}`);
+      } else if (currentStatus === "occupied" && currentOrderId !== orderId) {
+        // Tủ đang được sử dụng bởi đơn khác, không cập nhật
+        console.log(`⚠️ Tủ ${lockerData.lockerNumber || lockerId} đang được sử dụng bởi Order: ${currentOrderId}, bỏ qua Order: ${orderId}`);
+      } else {
+        // Tủ không ở trạng thái available, không cập nhật
+        console.log(`⚠️ Tủ ${lockerData.lockerNumber || lockerId} đang ở trạng thái "${currentStatus}", không cập nhật`);
+      }
+    }
+    
+    console.log("✅ Hoàn thành fix trạng thái tủ");
+  } catch (error) {
+    console.error("❌ Lỗi khi fix trạng thái tủ:", error);
+    throw error;
+  }
 }
 
 // Cập nhật trạng thái giao dịch
@@ -452,19 +701,82 @@ export async function pickupPackage(transactionId: string) {
     // Cập nhật transaction status thành picked_up
     await updateTransactionStatus(transactionId, "picked_up");
     
-    // Reset tủ về trạng thái available và xóa tất cả thông tin liên quan
+    // Reset tủ về trạng thái available, mở cửa và xóa tất cả thông tin liên quan
     const lockerRef = doc(db, "lockers", lockerId);
     await updateDoc(lockerRef, {
       status: "available",
       currentOrderId: null,
+      currentHolder: deleteField(),
+      currentHolderId: deleteField(),
+      currentHolderName: deleteField(),
+      currentHolderPhone: deleteField(),
+      currentTransactionType: deleteField(),
+      door: "open", // Mở cửa khi nhận hàng
       lastUpdated: new Date()
     });
     
-    console.log(`✅ Đã xử lý nhận hàng: Transaction ${transactionId}, Locker ${lockerId} đã được reset hoàn toàn`);
+    console.log(`✅ Đã xử lý nhận hàng: Transaction ${transactionId}, Locker ${lockerId} đã được reset và mở cửa`);
     
     return { success: true };
   } catch (error) {
     console.error("Lỗi khi xử lý nhận hàng:", error);
+    throw error;
+  }
+}
+
+// Kiểm tra code và phone từ delivery_info để xác thực nhận hàng
+export async function verifyPickupCode(code: string, phone: string): Promise<{ success: boolean; deliveryInfo?: any; transactionId?: string }> {
+  try {
+    // Chuẩn hóa số điện thoại
+    const normalizePhone = (phone: string) => {
+      if (!phone) return ""
+      let normalized = phone.replace(/\D/g, "")
+      if (normalized.startsWith("84")) {
+        normalized = "+" + normalized
+      } else if (normalized.startsWith("0")) {
+        normalized = "+84" + normalized.slice(1)
+      } else {
+        normalized = "+84" + normalized
+      }
+      return normalized
+    }
+
+    const normalizedPhone = normalizePhone(phone)
+    
+    // Tìm delivery_info có accessCode và receiverPhone khớp
+    const deliveryInfoQuery = query(
+      collection(db, "delivery_info"),
+      where("deliveryType", "==", "gui") // Chỉ tìm đơn gửi hàng
+    );
+    const deliveryInfoSnapshot = await getDocs(deliveryInfoQuery);
+    
+    for (const docSnap of deliveryInfoSnapshot.docs) {
+      const data = docSnap.data();
+      const deliveryPhone = normalizePhone(data.receiverPhone || "");
+      
+      // Kiểm tra accessCode (mã lấy hàng trong delivery_info)
+      const codeMatch = data.accessCode === code;
+      
+      if (codeMatch && deliveryPhone === normalizedPhone) {
+        // Lấy transactionId từ orderId trong delivery_info
+        const transactionId = data.orderId;
+        
+        if (!transactionId) {
+          console.warn("⚠️ Delivery_info không có orderId:", docSnap.id)
+          continue
+        }
+        
+        return {
+          success: true,
+          deliveryInfo: { id: docSnap.id, ...data },
+          transactionId
+        };
+      }
+    }
+    
+    return { success: false };
+  } catch (error) {
+    console.error("Lỗi khi kiểm tra mã lấy hàng:", error);
     throw error;
   }
 }

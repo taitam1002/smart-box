@@ -1,27 +1,30 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserTransactions, getLockers, pickupPackage, saveNotification } from "@/lib/firestore-actions"
-import { Package, Clock, CheckCircle, Fingerprint, Key } from "lucide-react"
+import { getUserTransactions, getLockers, pickupPackage, saveNotification, verifyPickupCode } from "@/lib/firestore-actions"
+import { db } from "@/lib/firebase"
+import { doc, updateDoc } from "firebase/firestore"
+import { Key } from "lucide-react"
 import { toast } from "sonner"
 
 export default function PickupPage() {
-  const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [orders, setOrders] = useState<any[]>([])
   const [lockers, setLockers] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [showFingerprintModal, setShowFingerprintModal] = useState(false)
-  const [selectedOrder, setSelectedOrder] = useState<any>(null)
+  const [showResultModal, setShowResultModal] = useState(false)
+  const [resultTitle, setResultTitle] = useState("")
+  const [resultMessage, setResultMessage] = useState("")
   const [pickupCode, setPickupCode] = useState("")
+  const [useAccountPhone, setUseAccountPhone] = useState(true)
+  const [selectedPhone, setSelectedPhone] = useState("")
 
   useEffect(() => {
     const currentUser = getCurrentUser()
@@ -50,22 +53,77 @@ export default function PickupPage() {
       return
     }
 
+    // Kiểm tra nếu không dùng số điện thoại tài khoản
+    if (!useAccountPhone && !selectedPhone) {
+      toast.error("Vui lòng chọn số điện thoại nhận SMS")
+      return
+    }
+
     try {
       setLoading(true)
       
-      // Tìm order có mã pickupCode phù hợp
-      const targetOrder = orders.find(order => 
-        order.status === "delivered" && 
-        order.transactionType === "send" && 
-        order.pickupCode === pickupCode.trim()
-      )
+      // Chuẩn hóa số điện thoại để so sánh
+      const normalizePhone = (phone: string) => {
+        if (!phone) return ""
+        let normalized = phone.replace(/\D/g, "") // Xóa tất cả ký tự không phải số
+        if (normalized.startsWith("84")) {
+          normalized = "+" + normalized
+        } else if (normalized.startsWith("0")) {
+          normalized = "+84" + normalized.slice(1)
+        } else {
+          normalized = "+84" + normalized
+        }
+        return normalized
+      }
 
-      if (!targetOrder) {
-        toast.error("Mã lấy hàng không đúng hoặc không tồn tại")
+      // Xác định số điện thoại cần kiểm tra
+      const phoneToCheck = useAccountPhone 
+        ? normalizePhone(user?.phone || "") 
+        : normalizePhone(selectedPhone)
+
+      // Kiểm tra code và phone từ delivery_info trên Firebase
+      const verification = await verifyPickupCode(pickupCode.trim(), phoneToCheck)
+      
+      if (!verification.success || !verification.transactionId) {
+        toast.error("Mã lấy hàng không đúng hoặc không khớp với số điện thoại")
+        setResultTitle("Không thể nhận hàng")
+        setResultMessage("Mã lấy hàng hoặc số điện thoại không đúng. Vui lòng kiểm tra lại và thử lại lần nữa.")
+        setShowResultModal(true)
         return
       }
 
+      // Tìm transaction tương ứng
+      const targetOrder = orders.find(order => order.id === verification.transactionId)
+      
+      if (!targetOrder || targetOrder.status !== "delivered" || targetOrder.transactionType !== "send") {
+        toast.error("Không tìm thấy đơn hàng hợp lệ")
+        setResultTitle("Không thể nhận hàng")
+        setResultMessage("Không tìm thấy đơn hàng phù hợp với mã lấy hàng này. Vui lòng kiểm tra lại thông tin.")
+        setShowResultModal(true)
+        return
+      }
+
+      // Nhận hàng và mở cửa
       await pickupPackage(targetOrder.id)
+      const lockerLabel = verification.deliveryInfo?.lockerNumber 
+        || lockers.find((l) => l.id === targetOrder.lockerId)?.lockerNumber 
+        || targetOrder.lockerId
+      
+      // Cập nhật door = "open" cho locker
+      const lockerDocId = verification.deliveryInfo?.lockerNumber || verification.deliveryInfo?.lockerId
+      if (lockerDocId) {
+        try {
+          const lockerRef = doc(db, "lockers", lockerDocId)
+          await updateDoc(lockerRef, {
+            door: "open",
+            status: "available",
+            lastUpdated: new Date()
+          })
+          console.log("✅ Đã mở cửa tủ:", lockerDocId)
+        } catch (e) {
+          console.error("Lỗi cập nhật trạng thái cửa:", e)
+        }
+      }
       
       // Thông báo cho khách hàng về việc đã nhận hàng
       try {
@@ -79,7 +137,27 @@ export default function PickupPage() {
           createdAt: new Date(),
         })
       } catch {}
-      toast.success("Đã nhận hàng thành công!")
+
+      // Thông báo cho admin về việc khách đã nhận hàng
+      try {
+        await saveNotification({
+          type: "customer_action",
+          message: `${user.name || "Khách hàng"} đã nhận hàng từ tủ ${lockerLabel}`,
+          lockerId: targetOrder.lockerId,
+          orderId: targetOrder.id,
+          isRead: false,
+          createdAt: new Date(),
+        })
+      } catch (e) {
+        console.error("Lỗi tạo thông báo cho admin (nhận bằng mã):", e)
+      }
+
+      // Hiển thị bảng kết quả + toast
+      setResultTitle("Nhận hàng thành công")
+      setResultMessage(`Bạn đã nhận hàng thành công tại tủ ${lockerLabel}. Vui lòng lấy hàng ra khỏi tủ và đóng cửa lại.`)
+      setShowResultModal(true)
+      console.log("✅ Đặt showResultModal = true, locker:", lockerLabel)
+      toast.success(`Đã nhận hàng thành công tại tủ ${lockerLabel}!`)
       
       // Reload data
       const [txs, lockerList] = await Promise.all([
@@ -89,6 +167,8 @@ export default function PickupPage() {
       setOrders(txs)
       setLockers(lockerList)
       setPickupCode("")
+      setSelectedPhone("")
+      setUseAccountPhone(true)
       
     } catch (error) {
       console.error("Lỗi khi nhận hàng:", error)
@@ -98,52 +178,6 @@ export default function PickupPage() {
     }
   }
 
-  const handlePickupByFingerprint = async (order: any) => {
-    setSelectedOrder(order)
-    setShowFingerprintModal(true)
-    
-    // Simulate fingerprint scan completion after 3 seconds
-    setTimeout(async () => {
-      try {
-        setLoading(true)
-        await pickupPackage(order.id)
-        
-        // Thông báo cho khách hàng về việc đã nhận hàng (giữ hàng)
-        try {
-          await saveNotification({
-            type: "customer_action",
-            message: `Bạn đã nhận hàng giữ thành công từ tủ ${lockers.find(l=>l.id===order.lockerId)?.lockerNumber || order.lockerId}`,
-            customerId: user.id,
-            orderId: order.id,
-            lockerId: order.lockerId,
-            isRead: false,
-            createdAt: new Date(),
-          })
-        } catch {}
-        
-        toast.success("Đã nhận hàng thành công!")
-        
-        // Reload data
-        const [txs, lockerList] = await Promise.all([
-          getUserTransactions(user.id),
-          getLockers()
-        ])
-        setOrders(txs)
-        setLockers(lockerList)
-        
-      } catch (error) {
-        console.error("Lỗi khi nhận hàng:", error)
-        toast.error("Có lỗi xảy ra khi nhận hàng")
-      } finally {
-        setLoading(false)
-        setShowFingerprintModal(false)
-        setSelectedOrder(null)
-      }
-    }, 3000)
-  }
-
-  const sendOrders = orders.filter((o) => o.status === "delivered" && o.transactionType === "send")
-  const holdOrders = orders.filter((o) => o.status === "delivered" && o.transactionType === "hold")
 
   return (
     <div className="space-y-6">
@@ -152,171 +186,99 @@ export default function PickupPage() {
         <p className="text-muted-foreground">Nhận hàng từ tủ thông minh</p>
       </div>
 
-      <Tabs defaultValue="send" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="send" className="flex items-center gap-2">
-            <Key className="h-4 w-4" />
-            Gửi hàng (Mã số)
-          </TabsTrigger>
-          <TabsTrigger value="hold" className="flex items-center gap-2">
-            <Fingerprint className="h-4 w-4" />
-            Giữ hàng (Vân tay)
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="send" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                Nhập mã lấy hàng
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handlePickupByCode} className="space-y-4">
-                <div>
-                  <Label htmlFor="pickupCode">Mã lấy hàng (6 số)</Label>
-                  <Input
-                    id="pickupCode"
-                    type="text"
-                    placeholder="Nhập mã 6 số từ SMS"
-                    value={pickupCode}
-                    onChange={(e) => setPickupCode(e.target.value)}
-                    maxLength={6}
-                    className="text-center text-lg font-mono"
-                  />
-                </div>
-                <Button 
-                  type="submit" 
-                  disabled={loading || !pickupCode.trim()}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                >
-                  {loading ? "Đang xử lý..." : "Xác nhận lấy hàng"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {sendOrders.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Đơn hàng gửi chờ nhận</h3>
-              {sendOrders.map((order) => {
-                const locker = lockers.find((l) => l.id === order.lockerId)
-                return (
-                  <Card key={order.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Từ: {order.senderName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Tủ: {locker?.lockerNumber} • {order.receiverPhone}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(order.createdAt).toLocaleString("vi-VN")}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 text-orange-700">
-                          <Clock className="h-4 w-4" />
-                          <span className="text-sm font-medium">Chờ nhận</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            Nhập mã lấy hàng
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handlePickupByCode} className="space-y-4">
+            <div>
+              <Label htmlFor="pickupCode">Mã lấy hàng (6 số)</Label>
+              <Input
+                id="pickupCode"
+                type="text"
+                placeholder="Nhập mã 6 số từ SMS"
+                value={pickupCode}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 6)
+                  setPickupCode(digits)
+                }}
+                maxLength={6}
+                className="text-center text-lg font-mono"
+              />
             </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="hold" className="space-y-4">
-          {holdOrders.length > 0 ? (
-            <div className="grid gap-4">
-              {holdOrders.map((order) => {
-                const locker = lockers.find((l) => l.id === order.lockerId)
-                return (
-                  <Card key={order.id}>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Package className="h-5 w-5" />
-                        Đơn hàng #{order.orderCode || order.id.slice(-8)}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Người gửi</Label>
-                          <p className="font-medium">{order.senderName}</p>
-                          <p className="text-sm text-muted-foreground">{order.senderPhone}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Người nhận</Label>
-                          <p className="font-medium">{order.receiverName}</p>
-                          <p className="text-sm text-muted-foreground">{order.receiverPhone}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Tủ số</Label>
-                          <p className="font-medium">{locker?.lockerNumber || "N/A"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Thời gian gửi</Label>
-                          <p className="text-sm">
-                            {new Date(order.createdAt).toLocaleString("vi-VN")}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-orange-700">
-                          <Clock className="h-4 w-4" />
-                          <span className="text-sm font-medium">Chờ nhận hàng</span>
-                        </div>
-                        <Button 
-                          onClick={() => handlePickupByFingerprint(order)}
-                          disabled={loading}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <Fingerprint className="h-4 w-4 mr-2" />
-                          Nhận hàng
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="useAccountPhone"
+                checked={useAccountPhone}
+                onCheckedChange={(checked) => {
+                  setUseAccountPhone(checked as boolean)
+                  if (checked) {
+                    setSelectedPhone("")
+                  }
+                }}
+              />
+              <Label 
+                htmlFor="useAccountPhone" 
+                className="text-sm font-normal cursor-pointer"
+              >
+                Tôi đang dùng đúng số điện thoại ({user?.phone || "N/A"}) trong thông tin tài khoản để nhận hàng
+              </Label>
             </div>
-          ) : (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center py-8 text-muted-foreground">
-                  <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Không có hàng giữ chờ nhận</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
+            
+            {!useAccountPhone && (
+              <div>
+                <Label htmlFor="phoneInput">Số điện thoại nhận SMS *</Label>
+                <Input
+                  id="phoneInput"
+                  type="tel"
+                  placeholder="Nhập số điện thoại nhận SMS (10 số)"
+                  value={selectedPhone}
+                  onChange={(e) => {
+                    // Chỉ cho phép nhập số, giới hạn 10 số
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10)
+                    setSelectedPhone(digits)
+                  }}
+                  maxLength={10}
+                  inputMode="numeric"
+                  required={!useAccountPhone}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Nhập số điện thoại mà SMS mã lấy hàng được gửi đến (10 số)
+                </p>
+              </div>
+            )}
+            
+            <Button 
+              type="submit" 
+              disabled={loading || !pickupCode.trim() || (!useAccountPhone && !selectedPhone)}
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              {loading ? "Đang xử lý..." : "Xác nhận lấy hàng"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      {/* Fingerprint Modal */}
-      <Dialog open={showFingerprintModal} onOpenChange={setShowFingerprintModal}>
+      {/* Result Modal */}
+      <Dialog open={showResultModal} onOpenChange={setShowResultModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Fingerprint className="h-5 w-5" />
-              Xác thực vân tay
-            </DialogTitle>
-            <DialogDescription>
-              Đang quét vân tay để xác thực nhận hàng...
-            </DialogDescription>
+            <DialogTitle>{resultTitle}</DialogTitle>
+            <DialogDescription>{resultMessage}</DialogDescription>
           </DialogHeader>
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2E3192] mx-auto mb-4"></div>
-            <p className="text-sm text-muted-foreground">
-              Vui lòng đặt ngón tay lên cảm biến vân tay
-            </p>
+          <div className="flex justify-end pt-4">
+            <Button
+              type="button"
+              onClick={() => setShowResultModal(false)}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Đã hiểu
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

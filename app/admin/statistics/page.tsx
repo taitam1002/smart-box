@@ -179,6 +179,13 @@ export default function StatisticsPage() {
   const shipperPercentage = totalOrders > 0 ? Math.round((shipperOrders / totalOrders) * 100) : 0
   const regularPercentage = totalOrders > 0 ? Math.round((regularOrders / totalOrders) * 100) : 0
 
+  // Thống kê theo mục đích sử dụng
+  const sendUsage = orders.filter(o => o.transactionType === "send").length
+  const holdUsage = orders.filter(o => o.transactionType === "hold").length
+  const totalUsagePurpose = sendUsage + holdUsage
+  const sendUsagePercentage = totalUsagePurpose > 0 ? Math.round((sendUsage / totalUsagePurpose) * 100) : 0
+  const holdUsagePercentage = totalUsagePurpose > 0 ? Math.round((holdUsage / totalUsagePurpose) * 100) : 0
+
   return (
     <div className="min-h-screen bg-gray-50/50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -367,6 +374,36 @@ export default function StatisticsPage() {
                 </div>
                 <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
                   <div className="h-full bg-green-500" style={{ width: `${regularPercentage}%` }} />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Usage by Purpose */}
+        <Card className="hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg">Lượt sử dụng theo mục đích</CardTitle>
+            <p className="text-sm text-muted-foreground">So sánh số lượt gửi và giữ hàng</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <span>Gửi hàng</span>
+                  <span className="text-base font-semibold text-[#2E3192]">{sendUsage} lượt</span>
+                </div>
+                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#2E3192]" style={{ width: `${sendUsagePercentage}%` }} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <span>Giữ hàng</span>
+                  <span className="text-base font-semibold text-[#E31E24]">{holdUsage} lượt</span>
+                </div>
+                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#E31E24]" style={{ width: `${holdUsagePercentage}%` }} />
                 </div>
               </div>
             </div>

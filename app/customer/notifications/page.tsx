@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { UnifiedPagination } from "@/components/ui/unified-pagination"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCurrentUser } from "@/lib/auth"
 import { Bell, Package, AlertCircle, Info, CheckCircle, Clock, X, Check, Eye } from "lucide-react"
 import { db } from "@/lib/firebase"
@@ -34,8 +34,10 @@ export default function CustomerNotificationsPage() {
   const [page, setPage] = useState(1)
   const [selectedErrorDetails, setSelectedErrorDetails] = useState<any>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [isDescriptionDialogOpen, setIsDescriptionDialogOpen] = useState(false)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const PAGE_SIZE = 10
+  const DESCRIPTION_PREVIEW_LENGTH = 20
 
   useEffect(() => {
     const init = async () => {
@@ -175,6 +177,7 @@ export default function CustomerNotificationsPage() {
     if (notification.errorId) {
       const details = await fetchErrorDetails(notification.errorId)
       setSelectedErrorDetails(details)
+      setIsDescriptionDialogOpen(false)
       setIsDetailModalOpen(true)
     } else {
       // Nếu không có errorId, tìm error report gần nhất để lấy thông tin tủ
@@ -401,7 +404,16 @@ export default function CustomerNotificationsPage() {
       )}
 
       {/* Modal chi tiết lỗi */}
-      <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+      <Dialog 
+        open={isDetailModalOpen} 
+        onOpenChange={(open) => {
+          setIsDetailModalOpen(open)
+          if (!open) {
+            setIsDescriptionDialogOpen(false)
+            setSelectedErrorDetails(null)
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-[#2E3192]">
@@ -429,19 +441,39 @@ export default function CustomerNotificationsPage() {
                       {selectedErrorDetails.status === 'resolved' ? 'Đã xử lý' : 'Đang xử lý'}
                     </Badge>
                   </div>
-                  <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                     <label className="text-sm font-medium text-gray-600">Tủ gặp lỗi:</label>
-                    <p className="text-sm text-gray-800">{selectedErrorDetails.lockerId || 'Không xác định'}</p>
+                    <p className="text-sm text-gray-800 font-semibold break-words">
+                      {selectedErrorDetails.lockerId || 'Không xác định'}
+                    </p>
                   </div>
                 </div>
               </div>
 
               {/* Mô tả lỗi */}
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-lg mb-3 text-gray-800">Mô tả lỗi</h3>
-                <p className="text-sm text-gray-800 bg-white p-3 rounded border">
-                  {selectedErrorDetails.description}
+              <div className="bg-blue-50 p-4 rounded-lg space-y-3">
+                <h3 className="font-semibold text-lg text-gray-800">Mô tả lỗi</h3>
+                <p className="text-sm text-gray-800 bg-white p-3 rounded border break-words">
+                  {(() => {
+                    const fullDescription = typeof selectedErrorDetails.description === "string" 
+                      ? selectedErrorDetails.description 
+                      : ""
+                    if (!fullDescription) return "Không có mô tả"
+                    if (fullDescription.length <= DESCRIPTION_PREVIEW_LENGTH) return fullDescription
+                    return `${fullDescription.slice(0, DESCRIPTION_PREVIEW_LENGTH)}...`
+                  })()}
                 </p>
+                {typeof selectedErrorDetails.description === "string" && selectedErrorDetails.description.length > DESCRIPTION_PREVIEW_LENGTH && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs font-medium w-full sm:w-auto"
+                    onClick={() => setIsDescriptionDialogOpen(true)}
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    Xem nội dung đầy đủ
+                  </Button>
+                )}
               </div>
 
               {/* Thời gian xử lý */}
@@ -526,6 +558,23 @@ export default function CustomerNotificationsPage() {
               <p className="text-gray-600">Không tìm thấy thông tin chi tiết</p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDescriptionDialogOpen} onOpenChange={setIsDescriptionDialogOpen}>
+        <DialogContent className="w-[90vw] max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-[#2E3192]">
+              Nội dung mô tả đầy đủ
+            </DialogTitle>
+          </DialogHeader>
+          <div className="bg-muted p-4 rounded-lg border">
+            <p className="text-sm whitespace-pre-wrap break-words break-all leading-relaxed">
+              {typeof selectedErrorDetails?.description === "string" && selectedErrorDetails.description.trim().length
+                ? selectedErrorDetails.description
+                : "Không có mô tả"}
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

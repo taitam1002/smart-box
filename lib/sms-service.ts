@@ -20,57 +20,19 @@ export class SMSService {
     return phone
   }
 
-  // Gửi SMS thực tế qua Twilio (cần cấu hình)
-  static async sendSMSReal(phone: string, message: string): Promise<boolean> {
-    try {
-      // Kiểm tra xem có cấu hình Twilio không
-      const twilioConfig = {
-        // Ưu tiên biến môi trường server an toàn
-        accountSid: process.env.TWILIO_ACCOUNT_SID || process.env.NEXT_PUBLIC_TWILIO_ACCOUNT_SID,
-        authToken: process.env.TWILIO_AUTH_TOKEN || process.env.NEXT_PUBLIC_TWILIO_AUTH_TOKEN,
-        fromNumber: process.env.TWILIO_FROM_NUMBER || process.env.NEXT_PUBLIC_TWILIO_FROM_NUMBER,
-      }
-
-      if (!twilioConfig.accountSid || !twilioConfig.authToken || !twilioConfig.fromNumber) {
-        console.warn("⚠️ Twilio chưa được cấu hình. Sử dụng chế độ giả lập.")
-        return this.sendSMSSimulation(phone, message)
-      }
-
-      // Gửi SMS thực tế qua Twilio
-      console.log("[SMS] Using Twilio (server) configuration to send real SMS")
-      const response = await fetch('/api/send-sms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: this.normalizePhone(phone),
-          message: message
-        })
-      })
-
-      if (response.ok) {
-        console.log(`✅ SMS đã gửi thành công đến ${phone}`)
-        return true
-      } else {
-        console.error("❌ Lỗi gửi SMS:", await response.text())
-        return false
-      }
-    } catch (error) {
-      console.error("Lỗi gửi SMS (fallback sang giả lập):", error)
-      return this.sendSMSSimulation(phone, message)
-    }
-  }
-
-  // Gửi SMS giả lập (fallback)
-  static async sendSMSSimulation(phone: string, message: string): Promise<boolean> {
+  // Gửi SMS (giả lập)
+  // TODO: Khi có module SMS thật, thay thế logic này
+  static async sendSMS(phone: string, message: string): Promise<boolean> {
     console.log(`📱 [SIMULATION] Gửi SMS đến ${phone}:`)
     console.log(`📝 Nội dung: ${message}`)
     
     // Simulate delay
     await new Promise(resolve => setTimeout(resolve, 1000))
     
-    return true
+    // Trả về false vì đây chỉ là simulation, chưa thực sự gửi SMS
+    // Khi có module SMS thật, thay đổi return true khi gửi thành công
+    console.warn("⚠️ [SIMULATION] SMS chưa được gửi thực sự - module SMS chưa có")
+    return false
   }
 
   // Gửi SMS cho người nhận
@@ -90,8 +52,8 @@ export class SMSService {
         message += ` Mã đơn hàng: ${orderCode}`
       }
 
-      // Gửi SMS (thực tế hoặc giả lập)
-      return await this.sendSMSReal(this.normalizePhone(receiverPhone), message)
+      // Gửi SMS (giả lập)
+      return await this.sendSMS(this.normalizePhone(receiverPhone), message)
     } catch (error) {
       console.error("Lỗi gửi SMS:", error)
       return false
@@ -107,7 +69,7 @@ export class SMSService {
     try {
       const message = `Xin chào ${senderName}, ${receiverName} đã lấy hàng thành công từ tủ thông minh.`
       
-      return await this.sendSMSReal(senderPhone, message)
+      return await this.sendSMS(senderPhone, message)
     } catch (error) {
       console.error("Lỗi gửi SMS xác nhận:", error)
       return false

@@ -173,11 +173,6 @@ export default function CustomerDashboardPage() {
                     <div className="flex-1">
                       <div className="mb-1">
                         <p className="font-medium">Người nhận: {order.receiverName}</p>
-                        {order.orderCode && (
-                          <p className="text-sm text-[#2E3192] font-semibold mt-1 ">
-                            Mã đơn: {order.orderCode}
-                          </p>
-                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         Tủ: {locker?.lockerNumber} • {order.receiverPhone}

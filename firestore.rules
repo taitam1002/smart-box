@@ -34,13 +34,38 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    function lockerWriteWhitelist() {
+      return [
+        "lockerNumber",
+        "size",
+        "status",
+        "door",
+        "lastUpdated",
+        "currentOrderId"
+      ];
+    }
+
+    function isSafeLockerUpdate() {
+      return isAuthenticated() &&
+        request.resource.data.keys().hasOnly(lockerWriteWhitelist()) &&
+        // Không cho phép thay đổi các định danh cứng
+        request.resource.data.lockerNumber == resource.data.lockerNumber &&
+        request.resource.data.size == resource.data.size &&
+        // Chỉ cho phép cập nhật các giá trị hợp lệ
+        request.resource.data.status in ["available", "occupied", "maintenance", "error"] &&
+        request.resource.data.door in ["open", "closed"];
+    }
+    
     // Lockers collection
     match /lockers/{lockerId} {
       // Everyone authenticated can read
       allow read: if isAuthenticated();
       
-      // Allow create/update/delete for admin or during seeding
-      allow create, update, delete: if isAdmin() || request.auth == null;
+      // Allow create/delete for admin hoặc khi seeding (không có auth)
+      allow create, delete: if isAdmin() || request.auth == null;
+      
+      // Cho phép admin hoặc khách hàng cập nhật các trường trạng thái an toàn
+      allow update: if isAdmin() || request.auth == null || isSafeLockerUpdate();
     }
     
     // Transactions collection

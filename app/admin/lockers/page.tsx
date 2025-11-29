@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { getLockers, getTransactions, dedupeLockers, getErrorReportsByLockerId } from "@/lib/firestore-actions"
+import { getLockers, getTransactions, dedupeLockers, getErrorReportsByLockerId, updateAllLockersWithDoorField, getLatestDeliveryInfoByLocker } from "@/lib/firestore-actions"
 import { ensureDefaultLockers } from "@/lib/seed-data"
 import { Package, Search, Eye, User, Phone, Calendar } from "lucide-react"
 import { toast } from "sonner"
@@ -46,23 +46,91 @@ export default function LockersPage() {
   const [isLoadingErrors, setIsLoadingErrors] = useState(false)
   const [errorDialogTransaction, setErrorDialogTransaction] = useState<any>(null)
   const [maintenanceDialogTransaction, setMaintenanceDialogTransaction] = useState<any>(null)
-
+  const [pendingDeliveryInfo, setPendingDeliveryInfo] = useState<any>(null)
+  const [isDeliveryInfoLoading, setIsDeliveryInfoLoading] = useState(false)
   useEffect(() => {
+    // Tự động cập nhật trường door cho tất cả tủ khi trang được load
+    const updateDoorFields = async () => {
+      try {
+        await updateAllLockersWithDoorField()
+      } catch (e) {
+        console.error("Lỗi cập nhật trường door:", e)
+      }
+    }
+    updateDoorFields()
+
     // Realtime lockers
     const lockersQuery = query(collection(db, "lockers"), orderBy("lastUpdated", "desc"))
-    const unsubscribeLockers = onSnapshot(lockersQuery, (snapshot) => {
+    const unsubscribeLockers = onSnapshot(lockersQuery, async (snapshot) => {
       // Chỉ tạo 6 tủ mặc định nếu chưa có tủ nào, KHÔNG reset dữ liệu hiện có
       if (snapshot.empty) {
         ensureDefaultLockers().catch(() => {})
       }
+      
+      // Tự động cập nhật các trường bị thiếu (bao gồm door) cho tất cả tủ
+      const { doc, updateDoc } = await import("firebase/firestore")
+      const updatePromises: Promise<void>[] = []
+      
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data()
+        const updates: any = {}
+        let needsUpdate = false
+        
+        // Kiểm tra và thêm các trường bắt buộc nếu bị thiếu
+        if (!data.door || data.door === undefined || data.door === null) {
+          updates.door = "closed"
+          needsUpdate = true
+        }
+        if (!data.status || data.status === undefined || data.status === null) {
+          updates.status = "available"
+          needsUpdate = true
+        }
+        if (!data.lockerNumber || data.lockerNumber === undefined || data.lockerNumber === null) {
+          // Nếu không có lockerNumber, dùng document ID
+          updates.lockerNumber = docSnap.id
+          needsUpdate = true
+        }
+        if (!data.size || data.size === undefined || data.size === null) {
+          // Xác định size dựa trên lockerNumber
+          const num = String(data.lockerNumber || docSnap.id).toUpperCase()
+          if (num === "A1" || num === "A4") {
+            updates.size = "small"
+          } else if (num === "A2" || num === "A5") {
+            updates.size = "medium"
+          } else if (num === "A3" || num === "A6") {
+            updates.size = "large"
+          } else {
+            updates.size = "medium" // Mặc định
+          }
+          needsUpdate = true
+        }
+        
+        if (needsUpdate) {
+          updates.lastUpdated = new Date()
+          const lockerRef = doc(db, "lockers", docSnap.id)
+          updatePromises.push(
+            updateDoc(lockerRef, updates).catch(err => 
+              console.error(`Lỗi cập nhật tủ ${docSnap.id}:`, err)
+            )
+          )
+        }
+      })
+      
+      // Thực hiện tất cả cập nhật
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises)
+        console.log(`✅ Đã tự động cập nhật ${updatePromises.length} tủ với các trường bị thiếu`)
+      }
+      
       const next = snapshot.docs.map((docSnap) => {
         const data: any = docSnap.data()
         return {
           id: docSnap.id,
           ...data,
           lastUpdated: data?.lastUpdated?.toDate ? data.lastUpdated.toDate() : data.lastUpdated,
-          status: typeof data.status === "string" ? data.status.trim() : data.status,
-          lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber,
+          status: typeof data.status === "string" ? data.status.trim() : data.status || "available",
+          lockerNumber: typeof data.lockerNumber === "string" ? data.lockerNumber.trim() : data.lockerNumber || docSnap.id,
+          door: data.door || "closed", // Đảm bảo door luôn có giá trị
         }
       })
       // Collapse duplicates by lockerNumber trên client để tránh hiển thị trùng
@@ -107,19 +175,44 @@ export default function LockersPage() {
     }
   }, [])
 
+  // Cập nhật thông tin giao dịch trong dialog khi dữ liệu realtime thay đổi
+  useEffect(() => {
+    if (!selectedLocker) return
+
+    let updatedCurrentTx: any = null
+    if (selectedLocker.status === "occupied" && selectedLocker.currentOrderId) {
+      updatedCurrentTx =
+        transactions.find(
+          (tx) => tx.id === selectedLocker.currentOrderId && tx.status === "delivered"
+        ) || null
+    }
+    setCurrentTransaction(updatedCurrentTx)
+
+    if (selectedLocker.status === "maintenance" && selectedLocker.currentOrderId) {
+      const maintenanceTx =
+        transactions.find((tx) => tx.id === selectedLocker.currentOrderId) || null
+      setMaintenanceDialogTransaction(maintenanceTx)
+    } else if (selectedLocker.status !== "maintenance") {
+      setMaintenanceDialogTransaction(null)
+    }
+  }, [transactions, selectedLocker])
+
   // add-locker handler removed
 
-  const handleViewLockerDetails = (locker: any) => {
+  const handleViewLockerDetails = async (locker: any) => {
     setSelectedLocker(locker)
     setSelectedErrorLocker(null) // reset để tránh dùng nhầm state từ dialog khác
     setErrorDialogTransaction(null)
+    setPendingDeliveryInfo(null)
     
     // Chỉ hiển thị giao dịch đang diễn ra khi tủ thực sự đang được sử dụng
     let activeTransaction = null
-    if (locker.status === "occupied") {
-      activeTransaction = transactions.find(
-        (tx) => tx.lockerId === locker.id && tx.status === "delivered"
-      )
+    if (locker.status === "occupied" && locker.currentOrderId) {
+      activeTransaction =
+        transactions.find((tx) => tx.id === locker.currentOrderId && tx.status === "delivered") ||
+        null
+    } else {
+      activeTransaction = null
     }
     // Nếu tủ đang bảo trì nhưng có hàng (currentOrderId), chuẩn bị giao dịch để hiển thị
     let maintenanceTx = null
@@ -129,6 +222,19 @@ export default function LockersPage() {
 
     setCurrentTransaction(activeTransaction)
     setMaintenanceDialogTransaction(maintenanceTx)
+
+    if (!activeTransaction && locker.status === "occupied") {
+      setIsDeliveryInfoLoading(true)
+      try {
+        const info = await getLatestDeliveryInfoByLocker(locker.lockerNumber || locker.id)
+        setPendingDeliveryInfo(info)
+      } finally {
+        setIsDeliveryInfoLoading(false)
+      }
+    } else {
+      setPendingDeliveryInfo(null)
+    }
+
     setIsViewDialogOpen(true)
   }
 
@@ -140,6 +246,7 @@ export default function LockersPage() {
     setSelectedLocker(null)
     setCurrentTransaction(null)
     setMaintenanceDialogTransaction(null)
+    setPendingDeliveryInfo(null)
     // Tìm giao dịch đang diễn ra nếu tủ bảo trì nhưng vẫn có hàng
     let tx: any = null
     if (locker?.currentOrderId) {
@@ -266,7 +373,16 @@ export default function LockersPage() {
       </div>
 
       {/* View Locker Details Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+  <Dialog
+        open={isViewDialogOpen}
+        onOpenChange={(open) => {
+          setIsViewDialogOpen(open)
+          if (!open) {
+            setSelectedLocker(null)
+            setCurrentTransaction(null)
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -356,6 +472,31 @@ export default function LockersPage() {
             )}
 
             {/* Transaction Info */}
+            {selectedLocker?.status === "occupied" && (
+              <div className="border-t pt-6 space-y-4">
+                {/* Hiển thị dữ liệu pending từ delivery_info trước */}
+                {pendingDeliveryInfo && (
+                  <div className="rounded-md border p-4 space-y-2 bg-muted/20">
+                    <Label className="text-sm font-medium text-muted-foreground">Người giữ hàng</Label>
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <p className="font-medium">{pendingDeliveryInfo.receiverName || "—"}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">{pendingDeliveryInfo.receiverPhone || "—"}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Thời gian cập nhật:{" "}
+                      {pendingDeliveryInfo.createdAt
+                        ? new Date(pendingDeliveryInfo.createdAt).toLocaleString("vi-VN")
+                        : "—"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {currentTransaction ? (
               <div className="border-t pt-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -420,7 +561,7 @@ export default function LockersPage() {
                   )}
                 </div>
               </div>
-            ) : !maintenanceDialogTransaction ? (
+            ) : !maintenanceDialogTransaction && (!selectedLocker?.status || selectedLocker.status === "available") ? (
               <div className="border-t pt-6 text-center text-muted-foreground">
                 <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>Tủ hiện tại không có giao dịch đang diễn ra</p>

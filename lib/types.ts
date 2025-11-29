@@ -1,6 +1,7 @@
 export type UserRole = "admin" | "customer"
 export type CustomerType = "shipper" | "regular"
 export type LockerStatus = "available" | "occupied" | "maintenance" | "error"
+export type DoorStatus = "closed" | "open"
 export type OrderStatus = "pending" | "delivered" | "picked_up" | "expired"
 export type ErrorStatus = "pending" | "received" | "processing" | "resolved" | "closed"
 export type ErrorProcessingStage = "reported" | "received" | "processing" | "resolved" | "notified"
@@ -25,6 +26,7 @@ export interface Locker {
   status: LockerStatus
   size: "small" | "medium" | "large"
   currentOrderId?: string
+  door?: DoorStatus // Trạng thái cửa tủ: "closed" hoặc "open"
   lastUpdated: Date
 }
 
@@ -73,4 +75,19 @@ export interface ErrorReport {
   closedAt?: Date
   adminNotes?: string
   customerNotifiedAt?: Date
+}
+
+export interface DeliveryInfo {
+  id: string
+  receiverPhone: string // Số điện thoại đã format +84
+  receiverName: string
+  lockerSize: "small" | "medium" | "large"
+  lockerNumber: string
+  lockerId: string
+  senderId: string
+  orderId?: string // ID của transaction nếu có
+  accessCode?: string // Mã lấy hàng (cho đơn gửi hàng)
+  fingerprintVerified?: boolean // Trạng thái xác thực vân tay
+  deliveryType: "gui" | "giu" // "gui" = gửi hàng, "giu" = giữ hàng (required)
+  createdAt: Date
 }

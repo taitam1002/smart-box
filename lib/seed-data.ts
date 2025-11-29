@@ -55,12 +55,12 @@ export async function seedFirestoreData() {
 
     // 3. Tạo 6 tủ thông minh cố định (A1-A6)
     const lockers: Omit<Locker, "id">[] = [
-      { lockerNumber: "A1", status: "available", size: "small", lastUpdated: new Date() },
-      { lockerNumber: "A2", status: "available", size: "medium", lastUpdated: new Date() },
-      { lockerNumber: "A3", status: "available", size: "large", lastUpdated: new Date() },
-      { lockerNumber: "A4", status: "available", size: "small", lastUpdated: new Date() },
-      { lockerNumber: "A5", status: "available", size: "medium", lastUpdated: new Date() },
-      { lockerNumber: "A6", status: "available", size: "large", lastUpdated: new Date() },
+      { lockerNumber: "A1", status: "available", size: "small", door: "closed", lastUpdated: new Date() },
+      { lockerNumber: "A2", status: "available", size: "medium", door: "closed", lastUpdated: new Date() },
+      { lockerNumber: "A3", status: "available", size: "large", door: "closed", lastUpdated: new Date() },
+      { lockerNumber: "A4", status: "available", size: "small", door: "closed", lastUpdated: new Date() },
+      { lockerNumber: "A5", status: "available", size: "medium", door: "closed", lastUpdated: new Date() },
+      { lockerNumber: "A6", status: "available", size: "large", door: "closed", lastUpdated: new Date() },
     ];
 
     const lockerIds: string[] = [];
