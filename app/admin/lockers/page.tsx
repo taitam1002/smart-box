@@ -487,7 +487,7 @@ export default function LockersPage() {
                       <p className="text-sm text-muted-foreground">{pendingDeliveryInfo.receiverPhone || "—"}</p>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Thời gian cập nhật:{" "}
+                      Thời gian giữ hàng:{" "}
                       {pendingDeliveryInfo.createdAt
                         ? new Date(pendingDeliveryInfo.createdAt).toLocaleString("vi-VN")
                         : "—"}

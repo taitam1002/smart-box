@@ -811,18 +811,30 @@ export async function markAllNotificationsAsRead(customerId: string) {
 export async function markAllAdminNotificationsAsRead() {
   try {
     const notificationsRef = collection(db, "notifications")
-    // Chỉ lấy thông báo chưa đọc và không gắn customerId (system notifications)
-    const q = query(notificationsRef, where("isRead", "==", false), where("customerId", "==", null))
+    // Lấy tất cả thông báo chưa đọc
+    const q = query(notificationsRef, where("isRead", "==", false))
     const snap = await getDocs(q)
 
     if (snap.empty) return
 
     const batch = writeBatch(db)
+    let count = 0
+    // Chỉ cập nhật thông báo hệ thống (không có customerId và không có privateToCustomer)
     snap.docs.forEach((d) => {
-      batch.update(d.ref, { isRead: true })
+      const data = d.data()
+      // Lọc giống như trong NotificationDropdown: !customerId && !privateToCustomer
+      if (!data.customerId && !data.privateToCustomer) {
+        batch.update(d.ref, { isRead: true })
+        count++
+      }
     })
-    await batch.commit()
-    console.log(`✅ Đã đánh dấu ${snap.size} thông báo hệ thống là đã đọc`)
+    
+    if (count > 0) {
+      await batch.commit()
+      console.log(`✅ Đã đánh dấu ${count} thông báo hệ thống là đã đọc`)
+    } else {
+      console.log("ℹ️ Không có thông báo hệ thống nào cần đánh dấu đã đọc")
+    }
   } catch (e) {
     console.error("Lỗi đánh dấu tất cả thông báo hệ thống đã đọc:", e)
     throw e

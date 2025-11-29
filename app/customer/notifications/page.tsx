@@ -542,15 +542,6 @@ export default function CustomerNotificationsPage() {
                 </div>
               </div>
 
-              {/* Ghi chú admin */}
-              {selectedErrorDetails.adminNotes && (
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-lg mb-3 text-gray-800">Ghi chú từ quản trị viên</h3>
-                  <p className="text-sm text-gray-800 bg-white p-3 rounded border">
-                    {selectedErrorDetails.adminNotes}
-                  </p>
-                </div>
-              )}
             </div>
           ) : (
             <div className="text-center py-8">
