@@ -6,37 +6,49 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { auth } from "@/lib/firebase"
+import { auth, db } from "@/lib/firebase"
 import { sendPasswordResetEmail } from "firebase/auth"
 import { Input } from "@/components/ui/input"
 import { Mail, ArrowLeft } from "lucide-react"
+import { collection, getDocs, limit, query, where } from "firebase/firestore"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError("")
     setLoading(true)
     try {
+      const normalizedEmail = email.trim().toLowerCase()
+
+      // 🔍 Kiểm tra email có tồn tại trong collection "users" trước khi gửi mail
+      const usersRef = collection(db, "users")
+      const q = query(usersRef, where("email", "==", normalizedEmail), limit(1))
+      const snap = await getDocs(q)
+
+      if (snap.empty) {
+        setError("Email chưa được đăng ký. Vui lòng kiểm tra lại hoặc tạo tài khoản mới.")
+        return
+      }
+
       // Hiển thị email reset bằng tiếng Việt và gắn continueUrl về trang chủ
       try { auth.languageCode = "vi" } catch {}
       const actionCodeSettings = { url: typeof window !== "undefined" ? window.location.origin + "/" : undefined }
-      const normalizedEmail = email.trim().toLowerCase()
-      // Gửi trực tiếp; nếu email không tồn tại Firebase sẽ trả về lỗi user-not-found
+      // Gửi email đặt lại mật khẩu (đến đây chắc chắn email đã tồn tại trong hệ thống)
       await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings as any)
       setSubmitted(true)
     } catch (err: any) {
       console.error("reset-password error:", err)
       const code = err?.code || "unknown"
       const msg =
-        code === "auth/user-not-found"
-          ? "Email chưa được đăng ký. Vui lòng kiểm tra lại hoặc tạo tài khoản mới."
-          : code === "auth/invalid-email"
+        code === "auth/invalid-email"
             ? "Địa chỉ email không hợp lệ."
             : `Không gửi được email đặt lại mật khẩu. Mã lỗi: ${code}`
-      alert(msg)
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -82,6 +94,12 @@ export default function ForgotPasswordPage() {
                 />
               </div>
 
+              {error && (
+                <p className="text-red-300 text-sm text-center bg-red-500/20 rounded-lg p-3 border border-red-500/30">
+                  {error}
+                </p>
+              )}
+
               <div className="flex justify-center pt-4">
                 <Button
                   type="submit"
@@ -96,7 +114,7 @@ export default function ForgotPasswordPage() {
         ) : (
           <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 text-center">
             <p className="text-white text-lg mb-4">Liên kết đặt lại mật khẩu đã được gửi đến email của bạn!</p>
-            <p className="text-white/80 text-sm">Vui lòng kiểm tra hộp thư đến và làm theo hướng dẫn.</p>
+            <p className="text-white/80 text-sm">Vui lòng kiểm tra hộp thư đến .</p>
           </div>
         )}
       </div>
