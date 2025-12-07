@@ -29,7 +29,7 @@ export function CustomerHeader() {
   }, [])
 
   return (
-    <header className="bg-[#2E3192] text-white">
+    <header className="fixed top-0 left-0 right-0 z-40 bg-[#2E3192] text-white shadow-md">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between py-3 sm:py-4">
           {/* Logo and Title - Responsive */}
