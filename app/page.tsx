@@ -98,7 +98,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-6 animate-slide-up-delay">
           {/* Account Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300 ">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white transition-colors duration-300 ">
               <User className="w-5 h-5" />
             </div>
             <Input
@@ -106,14 +106,14 @@ export default function LoginPage() {
               placeholder="Tài khoản"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-12 h-14 bg-white rounded-full text-base transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105"
+              className="pl-12 h-14 bg-white rounded-full text-base transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-white"
               required
             />
           </div>
 
           {/* Password Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white transition-colors duration-300">
               <Lock className="w-5 h-5" />
             </div>
             <Input
@@ -121,7 +121,7 @@ export default function LoginPage() {
               placeholder="Mật khẩu"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-12 h-14 bg-white rounded-full text-base transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105"
+              className="pl-12 h-14 bg-white rounded-full text-base transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-white"
               required
             />
             <button

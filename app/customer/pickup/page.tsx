@@ -207,7 +207,7 @@ export default function PickupPage() {
                   setPickupCode(digits)
                 }}
                 maxLength={6}
-                className="text-center text-lg font-mono"
+                className="text-center text-lg font-mono text-gray-900 dark:text-gray-100"
               />
             </div>
             
@@ -246,6 +246,7 @@ export default function PickupPage() {
                   maxLength={10}
                   inputMode="numeric"
                   required={!useAccountPhone}
+                  className="text-gray-900 dark:text-gray-100"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Nhập số điện thoại mà SMS mã lấy hàng được gửi đến (10 số)

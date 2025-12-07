@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
                   <Mail className="w-5 h-5" />
                 </div>
                 <Input
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
                   placeholder="Email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-12 h-14 bg-white rounded-full"
+                  className="pl-12 h-14 bg-white rounded-full placeholder:text-white"
                   required
                 />
               </div>
