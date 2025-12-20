@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCurrentUser } from "@/lib/auth"
-import { saveTransaction, getLockers, updateLockerStatus, saveNotification, findUserByEmail, saveDeliveryInfo, updateDeliveryInfo, deleteDeliveryInfo } from "@/lib/firestore-actions"
+import { saveTransaction, getLockers, updateLockerStatus, saveNotification, findUserByEmail, saveDeliveryInfo, updateDeliveryInfo, deleteDeliveryInfo, cleanupDeliveryInfo, autoCleanupDeliveryInfoWithLockerReset } from "@/lib/firestore-actions"
 import { SMSService } from "@/lib/sms-service"
 import { Package, Archive, Fingerprint } from "lucide-react"
 import { db } from "@/lib/firebase"
@@ -639,12 +639,22 @@ export default function SendPackagePage() {
             }
             
             // Cập nhật delivery_info với orderId (giữ nguyên fingerprintVerified: true)
+            // Hàm updateDeliveryInfo sẽ tự động xóa document nếu có fingerprintData
             try {
               await updateDeliveryInfo(deliveryInfoId, {
                 orderId: newOrderId,
                 // Không xóa field fingerprintVerified, giữ nguyên giá trị true
               })
               console.log("✅ Đã cập nhật delivery_info với orderId:", newOrderId)
+              
+              // Đảm bảo xóa document nếu có fingerprintData (backup check)
+              // Nếu updateDeliveryInfo không xóa (do document đã bị xóa hoặc lỗi), cleanupDeliveryInfo sẽ xử lý
+              try {
+                await cleanupDeliveryInfo(deliveryInfoId)
+              } catch (cleanupError) {
+                // Không quan trọng nếu cleanup thất bại (có thể document đã bị xóa)
+                console.log("ℹ️ Cleanup delivery_info (có thể document đã bị xóa):", cleanupError)
+              }
             } catch (e) {
               console.error("Lỗi cập nhật delivery_info:", e)
             }
@@ -717,6 +727,23 @@ export default function SendPackagePage() {
             const data = snapshot.data()
             console.log("📡 Nhận được cập nhật delivery_info:", data)
             console.log("🔍 Kiểm tra fingerprintVerified:", data.fingerprintVerified, "Type:", typeof data.fingerprintVerified)
+
+            // TỰ ĐỘNG XÓA: Nếu document có fingerprintData (đơn giữ hàng), tự động xóa và reset tủ
+            if (data.deliveryType === "giu" && data.fingerprintData) {
+              console.log("🗑️ Phát hiện fingerprintData trong listener, tự động xóa document và reset tủ")
+              try {
+                await autoCleanupDeliveryInfoWithLockerReset(deliveryInfoId)
+                console.log("✅ Đã tự động xóa delivery_info có fingerprintData và reset tủ")
+              } catch (cleanupError) {
+                console.error("Lỗi khi tự động xóa delivery_info:", cleanupError)
+              }
+              // Dừng listener vì document đã bị xóa
+              unsubscribe()
+              setFingerprintUnsubscribe(null)
+              setCurrentDeliveryInfoId(null)
+              setShowFingerprintModal(false)
+              return
+            }
 
             // Kiểm tra nếu vân tay đã được xác thực (chấp nhận nhiều định dạng từ thiết bị)
             if (isFingerprintVerified(data.fingerprintVerified)) {

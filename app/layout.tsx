@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/toaster'
 import { BrowserExitTracker } from '@/components/browser-exit-tracker'
+import { DeliveryInfoAutoCleanup } from '@/components/delivery-info-auto-cleanup'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <BrowserExitTracker />
+        <DeliveryInfoAutoCleanup />
         {children}
         <Toaster />
         <Analytics />
