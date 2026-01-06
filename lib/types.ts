@@ -32,6 +32,7 @@ export interface Locker {
 
 export interface Order {
   id: string
+  orderId?: string // ID của transaction (bằng với document ID)
   senderId: string
   senderName: string
   senderPhone: string

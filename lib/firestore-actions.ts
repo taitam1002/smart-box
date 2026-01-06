@@ -29,7 +29,7 @@ export async function getLatestDeliveryInfoByLocker(lockerNumber: string) {
 
 import { db } from "@/lib/firebase";
 import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc, writeBatch, deleteField, limit } from "firebase/firestore";
-import type { User, Order, ErrorReport, Notification, Locker, DeliveryInfo, DoorStatus } from "@/lib/types";
+import type { User, Order, ErrorReport, Notification, Locker, DeliveryInfo, DoorStatus, CustomerType } from "@/lib/types";
 
 // Lưu thông tin tài khoản người dùng
 export async function saveUser(user: User) {
@@ -37,9 +37,14 @@ export async function saveUser(user: User) {
 }
 
 // Lưu lịch sử giao dịch (Order)
-export async function saveTransaction(order: Omit<Order, "id">): Promise<string> {
+export async function saveTransaction(order: Omit<Order, "id" | "orderId">): Promise<string> {
   const docRef = await addDoc(collection(db, "transactions"), order);
-  return docRef.id;
+  const transactionId = docRef.id;
+  
+  // Tự động cập nhật orderId bằng với document ID
+  await updateDoc(docRef, { orderId: transactionId });
+  
+  return transactionId;
 }
 
 // Lưu báo lỗi/feedback
@@ -94,7 +99,98 @@ export async function saveDeliveryInfo(deliveryInfo: Omit<DeliveryInfo, "id">): 
     : deliveryInfo
   
   const docRef = await addDoc(collection(db, "delivery_info"), dataToSave);
-  return docRef.id;
+  const deliveryInfoId = docRef.id;
+  
+  // Tự động tạo transaction nếu chưa có orderId
+  if (!deliveryInfo.orderId) {
+    try {
+      let transactionData: Omit<Order, "id">;
+      
+      if (deliveryInfo.deliveryType === "giu") {
+        // Đơn giữ hàng: sender = receiver
+        transactionData = {
+          senderId: deliveryInfo.senderId,
+          senderName: deliveryInfo.receiverName,
+          senderPhone: deliveryInfo.receiverPhone,
+          senderType: "regular" as const,
+          receiverName: deliveryInfo.receiverName,
+          receiverPhone: deliveryInfo.receiverPhone,
+          lockerId: deliveryInfo.lockerId,
+          status: "delivered" as const,
+          createdAt: deliveryInfo.createdAt || new Date(),
+          deliveredAt: deliveryInfo.createdAt || new Date(),
+          transactionType: "hold" as const,
+        };
+      } else {
+        // Đơn gửi hàng: cần lấy thông tin sender từ user
+        try {
+          const userRef = doc(db, "users", deliveryInfo.senderId);
+          const userSnap = await getDoc(userRef);
+          
+          if (userSnap.exists()) {
+            const userData = userSnap.data() as User;
+            transactionData = {
+              senderId: deliveryInfo.senderId,
+              senderName: userData.name || deliveryInfo.receiverName,
+              senderPhone: userData.phone || deliveryInfo.receiverPhone,
+              senderType: (userData.customerType || "regular") as CustomerType,
+              receiverName: deliveryInfo.receiverName,
+              receiverPhone: deliveryInfo.receiverPhone,
+              lockerId: deliveryInfo.lockerId,
+              status: "delivered" as const,
+              createdAt: deliveryInfo.createdAt || new Date(),
+              deliveredAt: deliveryInfo.createdAt || new Date(),
+              transactionType: "send" as const,
+            };
+          } else {
+            // Fallback nếu không tìm thấy user
+            transactionData = {
+              senderId: deliveryInfo.senderId,
+              senderName: deliveryInfo.receiverName,
+              senderPhone: deliveryInfo.receiverPhone,
+              senderType: "regular" as const,
+              receiverName: deliveryInfo.receiverName,
+              receiverPhone: deliveryInfo.receiverPhone,
+              lockerId: deliveryInfo.lockerId,
+              status: "delivered" as const,
+              createdAt: deliveryInfo.createdAt || new Date(),
+              deliveredAt: deliveryInfo.createdAt || new Date(),
+              transactionType: "send" as const,
+            };
+          }
+        } catch (userError) {
+          console.error("Lỗi lấy thông tin user:", userError);
+          // Fallback nếu có lỗi
+          transactionData = {
+            senderId: deliveryInfo.senderId,
+            senderName: deliveryInfo.receiverName,
+            senderPhone: deliveryInfo.receiverPhone,
+            senderType: "regular" as const,
+            receiverName: deliveryInfo.receiverName,
+            receiverPhone: deliveryInfo.receiverPhone,
+            lockerId: deliveryInfo.lockerId,
+            status: "delivered" as const,
+            createdAt: deliveryInfo.createdAt || new Date(),
+            deliveredAt: deliveryInfo.createdAt || new Date(),
+            transactionType: "send" as const,
+          };
+        }
+      }
+      
+      // Tạo transaction
+      const transactionId = await saveTransaction(transactionData);
+      console.log(`✅ Đã tự động tạo transaction ${transactionId} cho delivery_info ${deliveryInfoId}`);
+      
+      // Cập nhật delivery_info với orderId
+      await updateDoc(docRef, { orderId: transactionId });
+      console.log(`✅ Đã cập nhật delivery_info ${deliveryInfoId} với orderId: ${transactionId}`);
+    } catch (transactionError) {
+      console.error("Lỗi khi tự động tạo transaction cho delivery_info:", transactionError);
+      // Không throw error để không ảnh hưởng đến việc tạo delivery_info
+    }
+  }
+  
+  return deliveryInfoId;
 }
 
 // Cập nhật thông tin giao hàng
@@ -564,16 +660,39 @@ export async function getLockers(): Promise<Locker[]> {
 export async function getTransactions(): Promise<Order[]> {
   const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map((docSnap) => {
+  const updatePromises: Promise<void>[] = [];
+  
+  const transactions = querySnapshot.docs.map((docSnap) => {
     const data: any = docSnap.data()
+    const transactionId = docSnap.id;
+    
+    // Tự động cập nhật orderId nếu chưa có (cho các transaction cũ)
+    if (!data.orderId) {
+      updatePromises.push(
+        updateDoc(docSnap.ref, { orderId: transactionId }).catch((err) => {
+          console.error(`Lỗi cập nhật orderId cho transaction ${transactionId}:`, err);
+        })
+      );
+    }
+    
     return {
-      id: docSnap.id,
+      id: transactionId,
+      orderId: data.orderId || transactionId, // Đảm bảo luôn có orderId
       ...data,
       createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
       deliveredAt: data?.deliveredAt?.toDate ? data.deliveredAt.toDate() : data.deliveredAt,
       pickedUpAt: data?.pickedUpAt?.toDate ? data.pickedUpAt.toDate() : data.pickedUpAt,
     } as Order
-  })
+  });
+  
+  // Cập nhật bất đồng bộ (không chặn việc trả về kết quả)
+  if (updatePromises.length > 0) {
+    Promise.all(updatePromises).then(() => {
+      console.log(`✅ Đã cập nhật orderId cho ${updatePromises.length} transaction cũ`);
+    });
+  }
+  
+  return transactions;
 }
 
 // Lấy giao dịch của một người dùng
@@ -584,16 +703,38 @@ export async function getUserTransactions(userId: string): Promise<Order[]> {
     where("senderId", "==", userId)
   );
   const querySnapshot = await getDocs(q);
+  const updatePromises: Promise<void>[] = [];
+  
   const items = querySnapshot.docs.map((docSnap) => {
     const data: any = docSnap.data()
+    const transactionId = docSnap.id;
+    
+    // Tự động cập nhật orderId nếu chưa có (cho các transaction cũ)
+    if (!data.orderId) {
+      updatePromises.push(
+        updateDoc(docSnap.ref, { orderId: transactionId }).catch((err) => {
+          console.error(`Lỗi cập nhật orderId cho transaction ${transactionId}:`, err);
+        })
+      );
+    }
+    
     return {
-      id: docSnap.id,
+      id: transactionId,
+      orderId: data.orderId || transactionId, // Đảm bảo luôn có orderId
       ...data,
       createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
       deliveredAt: data?.deliveredAt?.toDate ? data.deliveredAt.toDate() : data.deliveredAt,
       pickedUpAt: data?.pickedUpAt?.toDate ? data.pickedUpAt.toDate() : data.pickedUpAt,
     } as Order
-  })
+  });
+  
+  // Cập nhật bất đồng bộ (không chặn việc trả về kết quả)
+  if (updatePromises.length > 0) {
+    Promise.all(updatePromises).then(() => {
+      console.log(`✅ Đã cập nhật orderId cho ${updatePromises.length} transaction cũ của user ${userId}`);
+    });
+  }
+  
   return items.sort((a, b) => {
     const ta = (a as any).createdAt?.getTime?.() ?? 0
     const tb = (b as any).createdAt?.getTime?.() ?? 0
