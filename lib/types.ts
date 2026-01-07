@@ -32,7 +32,6 @@ export interface Locker {
 
 export interface Order {
   id: string
-  orderId?: string // ID của transaction (bằng với document ID)
   senderId: string
   senderName: string
   senderPhone: string
@@ -47,6 +46,8 @@ export interface Order {
   pickedUpAt?: Date
   pickupCode?: string
   transactionType?: "send" | "hold"
+  fingerprintVerified?: boolean
+  smsSent?: boolean
 }
 
 export interface Notification {
@@ -89,8 +90,7 @@ export interface DeliveryInfo {
   orderId?: string // ID của transaction nếu có
   accessCode?: string // Mã lấy hàng (cho đơn gửi hàng)
   fingerprintVerified?: boolean // Trạng thái xác thực vân tay
-  fingerprintData?: string // Dữ liệu vân tay (cho đơn giữ hàng)
+  smsSent?: boolean // Trạng thái đã gửi SMS
   deliveryType: "gui" | "giu" // "gui" = gửi hàng, "giu" = giữ hàng (required)
-  receive?: boolean // Cờ nhận hàng (cho đơn gửi hàng), ban đầu false, khi true thì xóa document
   createdAt: Date
 }

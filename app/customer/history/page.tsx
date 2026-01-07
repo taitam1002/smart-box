@@ -50,6 +50,8 @@ export default function HistoryPage() {
                 createdAt: di.createdAt,
                 deliveredAt: di.createdAt,
                 transactionType: "hold" as const,
+                fingerprintVerified: false,
+                smsSent: false,
               }
               
               const newOrderId = await saveTransaction(newOrder)

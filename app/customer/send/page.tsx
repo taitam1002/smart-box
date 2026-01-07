@@ -252,6 +252,8 @@ export default function SendPackagePage() {
           deliveredAt: new Date(),
           pickupCode,
           transactionType: "send" as const,
+          fingerprintVerified: false,
+          smsSent: false,
         }
         if (user.customerType === "shipper" && sendFormData.orderCode) {
           newOrder.orderCode = sendFormData.orderCode
@@ -273,6 +275,7 @@ export default function SendPackagePage() {
             senderId,
             orderId: newOrderId,
             // KHÔNG lưu accessCode vào delivery_info - chỉ lưu sau khi SMS thành công
+            smsSent: false, // Đơn gửi hàng chỉ cần SMS
             deliveryType: "gui" as const, // Gửi hàng
             createdAt: new Date(),
           }
@@ -536,7 +539,7 @@ export default function SendPackagePage() {
             lockerNumber: availableLocker.lockerNumber,
             lockerId: availableLocker.id,
             senderId: senderId2,
-            fingerprintVerified: false, // Chưa có vân tay
+            fingerprintVerified: false, // Đơn giữ hàng chỉ cần vân tay
             deliveryType: "giu" as const, // Giữ hàng
             createdAt: new Date(),
           }

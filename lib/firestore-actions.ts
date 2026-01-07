@@ -29,7 +29,7 @@ export async function getLatestDeliveryInfoByLocker(lockerNumber: string) {
 
 import { db } from "@/lib/firebase";
 import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc, writeBatch, deleteField, limit } from "firebase/firestore";
-import type { User, Order, ErrorReport, Notification, Locker, DeliveryInfo, DoorStatus, CustomerType } from "@/lib/types";
+import type { User, Order, ErrorReport, Notification, Locker, DeliveryInfo, DoorStatus } from "@/lib/types";
 
 // Lưu thông tin tài khoản người dùng
 export async function saveUser(user: User) {
@@ -37,14 +37,9 @@ export async function saveUser(user: User) {
 }
 
 // Lưu lịch sử giao dịch (Order)
-export async function saveTransaction(order: Omit<Order, "id" | "orderId">): Promise<string> {
+export async function saveTransaction(order: Omit<Order, "id">): Promise<string> {
   const docRef = await addDoc(collection(db, "transactions"), order);
-  const transactionId = docRef.id;
-  
-  // Tự động cập nhật orderId bằng với document ID
-  await updateDoc(docRef, { orderId: transactionId });
-  
-  return transactionId;
+  return docRef.id;
 }
 
 // Lưu báo lỗi/feedback
@@ -93,143 +88,13 @@ export async function saveNotification(notification: Omit<Notification, "id">) {
 
 // Lưu thông tin giao hàng (số điện thoại, loại tủ, mã tủ, tên)
 export async function saveDeliveryInfo(deliveryInfo: Omit<DeliveryInfo, "id">): Promise<string> {
-  // Nếu là đơn gửi hàng, thêm cờ receive: false
-  const dataToSave = deliveryInfo.deliveryType === "gui" 
-    ? { ...deliveryInfo, receive: false }
-    : deliveryInfo
-  
-  const docRef = await addDoc(collection(db, "delivery_info"), dataToSave);
-  const deliveryInfoId = docRef.id;
-  
-  // Tự động tạo transaction nếu chưa có orderId
-  if (!deliveryInfo.orderId) {
-    try {
-      let transactionData: Omit<Order, "id">;
-      
-      if (deliveryInfo.deliveryType === "giu") {
-        // Đơn giữ hàng: sender = receiver
-        transactionData = {
-          senderId: deliveryInfo.senderId,
-          senderName: deliveryInfo.receiverName,
-          senderPhone: deliveryInfo.receiverPhone,
-          senderType: "regular" as const,
-          receiverName: deliveryInfo.receiverName,
-          receiverPhone: deliveryInfo.receiverPhone,
-          lockerId: deliveryInfo.lockerId,
-          status: "delivered" as const,
-          createdAt: deliveryInfo.createdAt || new Date(),
-          deliveredAt: deliveryInfo.createdAt || new Date(),
-          transactionType: "hold" as const,
-        };
-      } else {
-        // Đơn gửi hàng: cần lấy thông tin sender từ user
-        try {
-          const userRef = doc(db, "users", deliveryInfo.senderId);
-          const userSnap = await getDoc(userRef);
-          
-          if (userSnap.exists()) {
-            const userData = userSnap.data() as User;
-            transactionData = {
-              senderId: deliveryInfo.senderId,
-              senderName: userData.name || deliveryInfo.receiverName,
-              senderPhone: userData.phone || deliveryInfo.receiverPhone,
-              senderType: (userData.customerType || "regular") as CustomerType,
-              receiverName: deliveryInfo.receiverName,
-              receiverPhone: deliveryInfo.receiverPhone,
-              lockerId: deliveryInfo.lockerId,
-              status: "delivered" as const,
-              createdAt: deliveryInfo.createdAt || new Date(),
-              deliveredAt: deliveryInfo.createdAt || new Date(),
-              transactionType: "send" as const,
-            };
-          } else {
-            // Fallback nếu không tìm thấy user
-            transactionData = {
-              senderId: deliveryInfo.senderId,
-              senderName: deliveryInfo.receiverName,
-              senderPhone: deliveryInfo.receiverPhone,
-              senderType: "regular" as const,
-              receiverName: deliveryInfo.receiverName,
-              receiverPhone: deliveryInfo.receiverPhone,
-              lockerId: deliveryInfo.lockerId,
-              status: "delivered" as const,
-              createdAt: deliveryInfo.createdAt || new Date(),
-              deliveredAt: deliveryInfo.createdAt || new Date(),
-              transactionType: "send" as const,
-            };
-          }
-        } catch (userError) {
-          console.error("Lỗi lấy thông tin user:", userError);
-          // Fallback nếu có lỗi
-          transactionData = {
-            senderId: deliveryInfo.senderId,
-            senderName: deliveryInfo.receiverName,
-            senderPhone: deliveryInfo.receiverPhone,
-            senderType: "regular" as const,
-            receiverName: deliveryInfo.receiverName,
-            receiverPhone: deliveryInfo.receiverPhone,
-            lockerId: deliveryInfo.lockerId,
-            status: "delivered" as const,
-            createdAt: deliveryInfo.createdAt || new Date(),
-            deliveredAt: deliveryInfo.createdAt || new Date(),
-            transactionType: "send" as const,
-          };
-        }
-      }
-      
-      // Tạo transaction
-      const transactionId = await saveTransaction(transactionData);
-      console.log(`✅ Đã tự động tạo transaction ${transactionId} cho delivery_info ${deliveryInfoId}`);
-      
-      // Cập nhật delivery_info với orderId
-      await updateDoc(docRef, { orderId: transactionId });
-      console.log(`✅ Đã cập nhật delivery_info ${deliveryInfoId} với orderId: ${transactionId}`);
-    } catch (transactionError) {
-      console.error("Lỗi khi tự động tạo transaction cho delivery_info:", transactionError);
-      // Không throw error để không ảnh hưởng đến việc tạo delivery_info
-    }
-  }
-  
-  return deliveryInfoId;
+  const docRef = await addDoc(collection(db, "delivery_info"), deliveryInfo);
+  return docRef.id;
 }
 
 // Cập nhật thông tin giao hàng
 export async function updateDeliveryInfo(deliveryInfoId: string, updates: Partial<Omit<DeliveryInfo, "id">>): Promise<void> {
   const docRef = doc(db, "delivery_info", deliveryInfoId);
-  
-  // Lấy dữ liệu hiện tại để kiểm tra
-  const docSnap = await getDoc(docRef);
-  if (!docSnap.exists()) {
-    console.warn("⚠️ Document không tồn tại:", deliveryInfoId)
-    return
-  }
-  
-  const currentData = docSnap.data() as DeliveryInfo;
-  
-  // KIỂM TRA TRƯỚC: Nếu document đã có fingerprintData (kể cả khi không có trong updates), xóa ngay
-  // Điều này đảm bảo document sẽ bị xóa ngay cả khi fingerprintData được set trực tiếp từ nguồn khác
-  if (currentData.deliveryType === "giu" && currentData.fingerprintData) {
-    console.log("🗑️ Đơn giữ hàng đã có fingerprintData, xóa document để gọn dữ liệu")
-    await deleteDoc(docRef);
-    return;
-  }
-  
-  const mergedData = { ...currentData, ...updates };
-  
-  // KIỂM TRA SAU: Nếu sau khi merge có fingerprintData, xóa document
-  if (mergedData.deliveryType === "giu" && mergedData.fingerprintData) {
-    console.log("🗑️ Đơn giữ hàng có fingerprintData (sau khi merge), xóa document để gọn dữ liệu")
-    await deleteDoc(docRef);
-    return;
-  }
-  
-  // Nếu là đơn gửi hàng và receive = true, xóa document
-  if (mergedData.deliveryType === "gui" && mergedData.receive === true) {
-    console.log("🗑️ Đơn gửi hàng đã nhận (receive=true), xóa document")
-    await deleteDoc(docRef);
-    return;
-  }
-  
   await updateDoc(docRef, updates);
 }
 
@@ -237,123 +102,6 @@ export async function updateDeliveryInfo(deliveryInfoId: string, updates: Partia
 export async function deleteDeliveryInfo(deliveryInfoId: string): Promise<void> {
   const docRef = doc(db, "delivery_info", deliveryInfoId);
   await deleteDoc(docRef);
-}
-
-// Hàm helper để tự động dọn dẹp delivery_info không cần thiết
-// - Xóa đơn giữ hàng có fingerprintData
-// - Xóa đơn gửi hàng có receive = true
-export async function cleanupDeliveryInfo(deliveryInfoId: string): Promise<boolean> {
-  try {
-    const docRef = doc(db, "delivery_info", deliveryInfoId);
-    const docSnap = await getDoc(docRef);
-    
-    if (!docSnap.exists()) {
-      return false;
-    }
-    
-    const data = docSnap.data() as DeliveryInfo;
-    
-    // Xóa đơn giữ hàng có fingerprintData
-    if (data.deliveryType === "giu" && data.fingerprintData) {
-      console.log("🗑️ Tự động xóa delivery_info (giữ hàng có fingerprintData):", deliveryInfoId);
-      await deleteDoc(docRef);
-      return true;
-    }
-    
-    // Xóa đơn gửi hàng có receive = true
-    if (data.deliveryType === "gui" && data.receive === true) {
-      console.log("🗑️ Tự động xóa delivery_info (gửi hàng đã nhận):", deliveryInfoId);
-      await deleteDoc(docRef);
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error("Lỗi khi dọn dẹp delivery_info:", error);
-    return false;
-  }
-}
-
-// Hàm tự động xóa delivery_info có fingerprintData và reset tủ
-// Được gọi khi ESP gửi fingerprintData lên Firestore
-export async function autoCleanupDeliveryInfoWithLockerReset(deliveryInfoId: string): Promise<boolean> {
-  try {
-    const docRef = doc(db, "delivery_info", deliveryInfoId);
-    const docSnap = await getDoc(docRef);
-    
-    if (!docSnap.exists()) {
-      return false;
-    }
-    
-    const data = docSnap.data() as DeliveryInfo;
-    
-    // Chỉ xử lý đơn giữ hàng có fingerprintData
-    if (data.deliveryType === "giu" && data.fingerprintData) {
-      const lockerId = data.lockerId;
-      const orderId = data.orderId; // Lưu orderId trước khi xóa document
-      
-      console.log("🗑️ Tự động xóa delivery_info (giữ hàng có fingerprintData từ ESP):", deliveryInfoId);
-      console.log("🔄 Đang reset tủ:", lockerId);
-      
-      // CẬP NHẬT TRANSACTION: Nếu có orderId, cập nhật transaction status thành "picked_up"
-      if (orderId) {
-        try {
-          const transactionRef = doc(db, "transactions", orderId);
-          const transactionSnap = await getDoc(transactionRef);
-          
-          if (transactionSnap.exists()) {
-            const transactionData = transactionSnap.data();
-            // Chỉ cập nhật nếu transaction chưa được nhận (status chưa phải "picked_up")
-            if (transactionData.status !== "picked_up") {
-              await updateTransactionStatus(orderId, "picked_up");
-              console.log(`✅ Đã cập nhật transaction ${orderId} thành "đã nhận hàng" (picked_up)`);
-            } else {
-              console.log(`ℹ️ Transaction ${orderId} đã được đánh dấu là picked_up rồi`);
-            }
-          } else {
-            console.log(`⚠️ Không tìm thấy transaction với orderId: ${orderId}`);
-          }
-        } catch (transactionError) {
-          console.error(`❌ Lỗi khi cập nhật transaction ${orderId}:`, transactionError);
-          // Tiếp tục xử lý dù có lỗi cập nhật transaction
-        }
-      } else {
-        console.log("ℹ️ Delivery_info không có orderId, bỏ qua cập nhật transaction");
-      }
-      
-      // Xóa document delivery_info
-      await deleteDoc(docRef);
-      
-      // Reset tủ về trạng thái available và mở cửa
-      if (lockerId) {
-        try {
-          const lockerRef = doc(db, "lockers", lockerId);
-          await updateDoc(lockerRef, {
-            status: "available",
-            currentOrderId: null,
-            currentHolder: deleteField(),
-            currentHolderId: deleteField(),
-            currentHolderName: deleteField(),
-            currentHolderPhone: deleteField(),
-            currentTransactionType: deleteField(),
-            door: "open", // Mở cửa khi có fingerprintData
-            lastUpdated: new Date()
-          });
-          console.log(`✅ Đã reset tủ ${lockerId} về trạng thái available và mở cửa`);
-        } catch (lockerError) {
-          console.error(`❌ Lỗi khi reset tủ ${lockerId}:`, lockerError);
-          // Vẫn trả về true vì đã xóa delivery_info thành công
-        }
-      }
-      
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error("Lỗi khi tự động dọn dẹp delivery_info và reset tủ:", error);
-    return false;
-  }
 }
 
 // Lấy delivery_info của một người dùng (để tạo transaction nếu chưa có)
@@ -660,39 +408,16 @@ export async function getLockers(): Promise<Locker[]> {
 export async function getTransactions(): Promise<Order[]> {
   const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
-  const updatePromises: Promise<void>[] = [];
-  
-  const transactions = querySnapshot.docs.map((docSnap) => {
+  return querySnapshot.docs.map((docSnap) => {
     const data: any = docSnap.data()
-    const transactionId = docSnap.id;
-    
-    // Tự động cập nhật orderId nếu chưa có (cho các transaction cũ)
-    if (!data.orderId) {
-      updatePromises.push(
-        updateDoc(docSnap.ref, { orderId: transactionId }).catch((err) => {
-          console.error(`Lỗi cập nhật orderId cho transaction ${transactionId}:`, err);
-        })
-      );
-    }
-    
     return {
-      id: transactionId,
-      orderId: data.orderId || transactionId, // Đảm bảo luôn có orderId
+      id: docSnap.id,
       ...data,
       createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
       deliveredAt: data?.deliveredAt?.toDate ? data.deliveredAt.toDate() : data.deliveredAt,
       pickedUpAt: data?.pickedUpAt?.toDate ? data.pickedUpAt.toDate() : data.pickedUpAt,
     } as Order
-  });
-  
-  // Cập nhật bất đồng bộ (không chặn việc trả về kết quả)
-  if (updatePromises.length > 0) {
-    Promise.all(updatePromises).then(() => {
-      console.log(`✅ Đã cập nhật orderId cho ${updatePromises.length} transaction cũ`);
-    });
-  }
-  
-  return transactions;
+  })
 }
 
 // Lấy giao dịch của một người dùng
@@ -703,38 +428,16 @@ export async function getUserTransactions(userId: string): Promise<Order[]> {
     where("senderId", "==", userId)
   );
   const querySnapshot = await getDocs(q);
-  const updatePromises: Promise<void>[] = [];
-  
   const items = querySnapshot.docs.map((docSnap) => {
     const data: any = docSnap.data()
-    const transactionId = docSnap.id;
-    
-    // Tự động cập nhật orderId nếu chưa có (cho các transaction cũ)
-    if (!data.orderId) {
-      updatePromises.push(
-        updateDoc(docSnap.ref, { orderId: transactionId }).catch((err) => {
-          console.error(`Lỗi cập nhật orderId cho transaction ${transactionId}:`, err);
-        })
-      );
-    }
-    
     return {
-      id: transactionId,
-      orderId: data.orderId || transactionId, // Đảm bảo luôn có orderId
+      id: docSnap.id,
       ...data,
       createdAt: data?.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
       deliveredAt: data?.deliveredAt?.toDate ? data.deliveredAt.toDate() : data.deliveredAt,
       pickedUpAt: data?.pickedUpAt?.toDate ? data.pickedUpAt.toDate() : data.pickedUpAt,
     } as Order
-  });
-  
-  // Cập nhật bất đồng bộ (không chặn việc trả về kết quả)
-  if (updatePromises.length > 0) {
-    Promise.all(updatePromises).then(() => {
-      console.log(`✅ Đã cập nhật orderId cho ${updatePromises.length} transaction cũ của user ${userId}`);
-    });
-  }
-  
+  })
   return items.sort((a, b) => {
     const ta = (a as any).createdAt?.getTime?.() ?? 0
     const tb = (b as any).createdAt?.getTime?.() ?? 0
@@ -997,25 +700,6 @@ export async function pickupPackage(transactionId: string) {
     
     // Cập nhật transaction status thành picked_up
     await updateTransactionStatus(transactionId, "picked_up");
-    
-    // Tìm delivery_info tương ứng với transactionId (chỉ cho đơn gửi hàng)
-    try {
-      const deliveryInfoQuery = query(
-        collection(db, "delivery_info"),
-        where("orderId", "==", transactionId),
-        where("deliveryType", "==", "gui")
-      );
-      const deliveryInfoSnapshot = await getDocs(deliveryInfoQuery);
-      
-      // Cập nhật receive = true cho tất cả delivery_info tương ứng
-      // Hàm updateDeliveryInfo sẽ tự động xóa document khi receive = true
-      for (const docSnap of deliveryInfoSnapshot.docs) {
-        await updateDeliveryInfo(docSnap.id, { receive: true });
-        console.log(`✅ Đã cập nhật receive=true cho delivery_info ${docSnap.id}, document sẽ được xóa tự động`);
-      }
-    } catch (deliveryError) {
-      console.error("Lỗi khi cập nhật delivery_info (không ảnh hưởng đến việc nhận hàng):", deliveryError);
-    }
     
     // Reset tủ về trạng thái available, mở cửa và xóa tất cả thông tin liên quan
     const lockerRef = doc(db, "lockers", lockerId);
