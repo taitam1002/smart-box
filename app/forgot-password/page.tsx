@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
       }
 
       // Hiển thị email reset bằng tiếng Việt và gắn continueUrl về trang chủ
-      try { auth.languageCode = "vi" } catch {}
+      try { auth.languageCode = "vi" } catch { }
       const actionCodeSettings = { url: typeof window !== "undefined" ? window.location.origin + "/" : undefined }
       // Gửi email đặt lại mật khẩu (đến đây chắc chắn email đã tồn tại trong hệ thống)
       await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings as any)
@@ -46,8 +46,8 @@ export default function ForgotPasswordPage() {
       const code = err?.code || "unknown"
       const msg =
         code === "auth/invalid-email"
-            ? "Địa chỉ email không hợp lệ."
-            : `Không gửi được email đặt lại mật khẩu. Mã lỗi: ${code}`
+          ? "Địa chỉ email không hợp lệ."
+          : `Không gửi được email đặt lại mật khẩu. Mã lỗi: ${code}`
       setError(msg)
     } finally {
       setLoading(false)
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 z-10 pointer-events-none">
                   <Mail className="w-5 h-5" />
                 </div>
                 <Input
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
                   placeholder="Email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-12 h-14 bg-white rounded-full placeholder:text-white"
+                  className="pl-12 h-14 bg-white rounded-full text-gray-800 placeholder:text-gray-400 border border-gray-300"
                   required
                 />
               </div>

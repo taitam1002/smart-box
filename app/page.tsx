@@ -98,7 +98,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-6 animate-slide-up-delay">
           {/* Account Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors duration-300 ">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors duration-300 z-10 pointer-events-none">
               <User className="w-5 h-5" />
             </div>
             <Input
@@ -106,14 +106,14 @@ export default function LoginPage() {
               placeholder="Tài khoản"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-12 h-14 bg-white rounded-full text-base text-gray-800 transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-gray-400 border border-gray-300"
+              className="pl-12 h-14 bg-white rounded-full text-base text-gray-800 transition-all duration-300 hover:shadow-lg focus:shadow-xl placeholder:text-gray-400 border border-gray-300"
               required
             />
           </div>
 
           {/* Password Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors duration-300">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors duration-300 z-10 pointer-events-none">
               <Lock className="w-5 h-5" />
             </div>
             <Input
@@ -121,13 +121,13 @@ export default function LoginPage() {
               placeholder="Mật khẩu"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-12 h-14 bg-white rounded-full text-base text-gray-800 transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-gray-400 border border-gray-300"
+              className="pl-12 h-14 bg-white rounded-full text-base text-gray-800 transition-all duration-300 hover:shadow-lg focus:shadow-xl placeholder:text-gray-400 border border-gray-300"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors duration-300 hover:scale-110"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors duration-300 hover:scale-110 z-10"
               aria-label={showPassword ? "Ẩn mật khẩu" : "Hiển thị mật khẩu"}
             >
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
