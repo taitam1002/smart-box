@@ -66,12 +66,12 @@ export default function LoginPage() {
     <div className="min-h-screen relative flex items-center justify-center overflow-hidden animate-fade-in">
       {/* Background Image */}
       <div className="absolute inset-0 z-0">
-        <Image 
-          src="/images/campus-bg.png" 
-          alt="HCMUTE Campus" 
-          fill 
-          className="object-cover animate-zoom-in" 
-          priority 
+        <Image
+          src="/images/campus-bg.png"
+          alt="HCMUTE Campus"
+          fill
+          className="object-cover animate-zoom-in"
+          priority
         />
         {/* Blue Overlay */}
         <div className="absolute inset-0 bg-[#1590bd]/40 animate-fade-in" />
@@ -82,11 +82,11 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="logo-container animate-bounce-in">
           <div className="relative w-35 h-35 sm:w-42 sm:h-42 bg-white/70 rounded-full shadow-xl">
-            <Image 
-              src="/images/Logo HCMUTE_White background.png" 
-              alt="HCMUTE Logo" 
-              fill 
-              className="logo-image" 
+            <Image
+              src="/images/Logo HCMUTE_White background.png"
+              alt="HCMUTE Logo"
+              fill
+              className="logo-image"
             />
           </div>
         </div>
@@ -98,7 +98,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-6 animate-slide-up-delay">
           {/* Account Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white transition-colors duration-300 ">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors duration-300 ">
               <User className="w-5 h-5" />
             </div>
             <Input
@@ -106,14 +106,14 @@ export default function LoginPage() {
               placeholder="Tài khoản"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-12 h-14 bg-white rounded-full text-base transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-white"
+              className="pl-12 h-14 bg-white rounded-full text-base text-gray-800 transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-gray-400 border border-gray-300"
               required
             />
           </div>
 
           {/* Password Input */}
           <div className="relative animate-input-focus">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white transition-colors duration-300">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors duration-300">
               <Lock className="w-5 h-5" />
             </div>
             <Input
@@ -121,7 +121,7 @@ export default function LoginPage() {
               placeholder="Mật khẩu"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-12 h-14 bg-white rounded-full text-base transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-white"
+              className="pl-12 h-14 bg-white rounded-full text-base text-gray-800 transition-all duration-300 hover:shadow-lg focus:shadow-xl focus:scale-105 placeholder:text-gray-400 border border-gray-300"
               required
             />
             <button
@@ -145,15 +145,15 @@ export default function LoginPage() {
 
           {/* Links */}
           <div className="text-center animate-fade-in-delay-2 bg-[#2e56a6] backdrop-blur-md rounded-full p-2">
-            <Link 
-              href="/forgot-password" 
+            <Link
+              href="/forgot-password"
               className="text-white font-semibold hover:underline text-md transition-colors duration-300 hover:text-blue-300"
             >
               Quên mật khẩu?
             </Link>
             <span className="text-white mx-2">|</span>
-            <Link 
-              href="/register" 
+            <Link
+              href="/register"
               className="text-white font-semibold hover:underline text-md transition-colors duration-300 hover:text-blue-300"
             >
               Tạo tài khoản
@@ -174,19 +174,19 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="text-[#f3e402] font-bold text-md text-center mt-12 flex items-center justify-center gap-2 animate-fade-in-delay-3">
-        Một sản phẩm của TAM-DUY-K21 IoT
-        <ReactCountryFlag
-          countryCode="VN"
-          svg
-          className="animate-wave"
-          style={{
-            width: "1.5em",
-            height: "1.5em",
-            borderRadius: "4px",
-          }}
-        />
-      </p>
-              
+          Một sản phẩm của TAM-DUY-K21 IoT
+          <ReactCountryFlag
+            countryCode="VN"
+            svg
+            className="animate-wave"
+            style={{
+              width: "1.5em",
+              height: "1.5em",
+              borderRadius: "4px",
+            }}
+          />
+        </p>
+
       </div>
     </div>
   )

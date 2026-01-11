@@ -91,7 +91,7 @@ export default function RegisterPage() {
         <form onSubmit={handleRegister} className="space-y-4">
           {/* Name Input */}
           <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
               <User className="w-5 h-5" />
             </div>
             <Input
@@ -99,14 +99,14 @@ export default function RegisterPage() {
               placeholder="Họ và tên"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="pl-12 h-12 bg-white rounded-full placeholder:text-white"
+              className="pl-12 h-12 bg-white rounded-full text-gray-800 placeholder:text-gray-400 border border-gray-300"
               required
             />
           </div>
 
           {/* Email Input */}
           <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
               <Mail className="w-5 h-5" />
             </div>
             <Input
@@ -114,14 +114,14 @@ export default function RegisterPage() {
               placeholder="Email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="pl-12 h-12 bg-white rounded-full placeholder:text-white"
+              className="pl-12 h-12 bg-white rounded-full text-gray-800 placeholder:text-gray-400 border border-gray-300"
               required
             />
           </div>
 
           {/* Phone Input */}
           <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
               <Phone className="w-5 h-5" />
             </div>
             <Input
@@ -134,14 +134,14 @@ export default function RegisterPage() {
                 const digits = e.target.value.replace(/\D/g, "").slice(0, 10)
                 setFormData({ ...formData, phone: digits })
               }}
-              className="pl-12 h-12 bg-white rounded-full placeholder:text-white"
+              className="pl-12 h-12 bg-white rounded-full text-gray-800 placeholder:text-gray-400 border border-gray-300"
               required
             />
           </div>
 
           {/* Password Input */}
           <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
               <Lock className="w-5 h-5" />
             </div>
             <Input
@@ -149,7 +149,7 @@ export default function RegisterPage() {
               placeholder="Mật khẩu"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="pl-12 h-12 bg-white rounded-full placeholder:text-white"
+              className="pl-12 h-12 bg-white rounded-full text-gray-800 placeholder:text-gray-400 border border-gray-300"
               required
             />
             <button
@@ -164,7 +164,7 @@ export default function RegisterPage() {
 
           {/* Confirm Password Input */}
           <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
               <Lock className="w-5 h-5" />
             </div>
             <Input
@@ -172,7 +172,7 @@ export default function RegisterPage() {
               placeholder="Xác nhận mật khẩu"
               value={formData.confirmPassword}
               onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              className="pl-12 h-12 bg-white rounded-full placeholder:text-white"
+              className="pl-12 h-12 bg-white rounded-full text-gray-800 placeholder:text-gray-400 border border-gray-300"
               required
             />
             <button

@@ -25,16 +25,16 @@ export default function SendPackagePage() {
   const [lockers, setLockers] = useState<any[]>([])
   const [reservedLockerState, setReservedLockerState] = useState<{ candidates: string[]; docId: string | null } | null>(null)
   const reservedLockerRef = useRef<{ candidates: string[]; docId: string | null } | null>(null)
-  
+
   // Modal states
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [modalMessage, setModalMessage] = useState("")
   const [modalTitle, setModalTitle] = useState("")
-  
+
   // Modal cho thông báo thông tin trùng
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
-  
+
   // State để control tab
   const [activeTab, setActiveTab] = useState("send")
 
@@ -57,7 +57,7 @@ export default function SendPackagePage() {
   useEffect(() => {
     const currentUser = getCurrentUser()
     setUser(currentUser)
-    
+
     // Load lockers from Firestore
     const loadLockers = async () => {
       try {
@@ -71,7 +71,7 @@ export default function SendPackagePage() {
         console.error("Lỗi tải danh sách tủ:", error)
       }
     }
-    
+
     loadLockers()
   }, [])
 
@@ -101,29 +101,38 @@ export default function SendPackagePage() {
   }
 
   // Kiểm tra định kỳ fingerprintVerified khi modal đang mở (backup cho listener)
+  // LƯU Ý: Không tự xử lý transaction ở đây - để listener chính (onSnapshot) xử lý
+  // useEffect này chỉ để phát hiện và log nếu listener có vấn đề
   useEffect(() => {
     if (!showFingerprintModal || !currentDeliveryInfoId) {
       return
     }
 
-    console.log("🔍 Bắt đầu kiểm tra định kỳ fingerprintVerified...")
+    console.log("🔍 Bắt đầu kiểm tra định kỳ fingerprintVerified (backup)...")
+    let alreadyDetected = false
+
     const checkInterval = setInterval(async () => {
+      if (alreadyDetected) return
+
       try {
         const deliveryInfoRef = doc(db, "delivery_info", currentDeliveryInfoId)
         const snapshot = await getDoc(deliveryInfoRef)
         if (snapshot.exists()) {
           const data = snapshot.data()
           if (isFingerprintVerified(data.fingerprintVerified)) {
-            console.log("✅ useEffect phát hiện fingerprintVerified = true!")
-            clearInterval(checkInterval)
-            // Đóng modal ngay lập tức
-            setShowFingerprintModal(false)
-            // Hiển thị thông báo
-            showSuccess("Xác thực thành công", "Đã nhận vân tay thành công!")
+            console.log("✅ useEffect backup phát hiện fingerprintVerified = true!")
+            console.log("📋 Data hiện tại:", {
+              orderId: data.orderId,
+              fingerprintVerified: data.fingerprintVerified,
+              deliveryType: data.deliveryType
+            })
+            alreadyDetected = true
+            // QUAN TRỌNG: KHÔNG đóng modal ở đây - để listener chính xử lý
+            // Listener chính sẽ tạo transaction và gắn orderId
           }
         }
       } catch (e) {
-        console.error("Lỗi kiểm tra trong useEffect:", e)
+        console.error("Lỗi kiểm tra trong useEffect backup:", e)
       }
     }, 500) // Kiểm tra mỗi 0.5 giây
 
@@ -174,7 +183,7 @@ export default function SendPackagePage() {
       // Reload danh sách tủ để đảm bảo có dữ liệu mới nhất
       const freshLockers = await getLockers()
       setLockers(freshLockers)
-      
+
       // Kiểm tra xem có tủ trống không
       const availableLockers = freshLockers.filter((l) => (l.status || "").trim() === "available")
       if (availableLockers.length === 0) {
@@ -191,7 +200,7 @@ export default function SendPackagePage() {
 
       const isNameDuplicate = normalizedReceiverName !== "" && normalizedReceiverName === normalizedSenderName
       const isPhoneDuplicate = normalizedReceiverPhone !== "" && normalizedReceiverPhone === normalizedSenderPhone
-      
+
       if (isNameDuplicate && isPhoneDuplicate) {
         setLoading(false)
         setShowDuplicateModal(true)
@@ -213,18 +222,18 @@ export default function SendPackagePage() {
       if (!senderId) {
         throw new Error("Không xác định được tài khoản. Vui lòng đăng nhập lại.")
       }
-      
+
       // Tìm tủ khả dụng theo kích cỡ được chọn (sử dụng freshLockers)
       let availableLocker = null
-      
+
       if (sendFormData.lockerSize) {
         console.log(`🔍 Tìm tủ kích cỡ: ${sendFormData.lockerSize}`)
         // Tìm tủ có kích cỡ phù hợp
-        availableLocker = freshLockers.find((l) => 
-          (l.status || "").trim() === "available" && 
+        availableLocker = freshLockers.find((l) =>
+          (l.status || "").trim() === "available" &&
           l.size === sendFormData.lockerSize
         )
-        
+
         if (availableLocker) {
           console.log(`✅ Tìm thấy tủ phù hợp: ${availableLocker.lockerNumber} (${availableLocker.size})`)
         } else {
@@ -238,7 +247,7 @@ export default function SendPackagePage() {
       if (availableLocker) {
         // Tạo mã 6 số cho việc lấy hàng
         const pickupCode = SMSService.generateCode()
-        
+
         const newOrder: any = {
           senderId,
           senderName: user.name,
@@ -258,10 +267,19 @@ export default function SendPackagePage() {
         if (user.customerType === "shipper" && sendFormData.orderCode) {
           newOrder.orderCode = sendFormData.orderCode
         }
-        
+
         // Lưu giao dịch vào Firestore
         const newOrderId = await saveTransaction(newOrder)
-        
+
+        // CẬP NHẬT transaction để có field orderId (chính là document ID)
+        try {
+          const transactionRef = doc(db, "transactions", newOrderId)
+          await updateDoc(transactionRef, { orderId: newOrderId })
+          console.log("✅ Đã gắn orderId vào transaction (gửi hàng):", newOrderId)
+        } catch (updateTxError) {
+          console.error("❌ Lỗi gắn orderId vào transaction:", updateTxError)
+        }
+
         // Lưu thông tin giao hàng (số điện thoại, loại tủ, mã tủ, tên) vào collection riêng
         // KHÔNG lưu accessCode vào delivery_info ngay - chỉ lưu sau khi SMS thành công
         let deliveryInfoId: string | null = null
@@ -285,7 +303,7 @@ export default function SendPackagePage() {
         } catch (e) {
           console.error("Lỗi lưu thông tin giao hàng:", e)
         }
-        
+
         // Cập nhật trạng thái tủ (không chặn luồng nếu lỗi)
         try {
           await updateLockerStatus(availableLocker.id, "occupied", newOrderId)
@@ -356,7 +374,7 @@ export default function SendPackagePage() {
           const notificationMessage = smsSent
             ? `Bạn đã gửi hàng thành công vào tủ ${availableLocker.lockerNumber}. Mã lấy hàng đã được gửi cho người nhận`
             : `Bạn đã gửi hàng thành công vào tủ ${availableLocker.lockerNumber}`
-          
+
           await saveNotification({
             type: "customer_action",
             message: notificationMessage,
@@ -369,9 +387,9 @@ export default function SendPackagePage() {
         } catch (e) {
           console.error("Lỗi tạo thông báo cho khách hàng:", e)
         }
-        
+
         const sizeLabel = availableLocker.size === "small" ? "Nhỏ" : availableLocker.size === "medium" ? "Vừa" : "Lớn"
-        
+
         // Hiển thị thông báo khác nhau tùy theo kết quả gửi SMS
         if (smsSent) {
           showSuccess(
@@ -387,26 +405,26 @@ export default function SendPackagePage() {
       } else {
         if (sendFormData.lockerSize) {
           const sizeLabel = sendFormData.lockerSize === "small" ? "Nhỏ" : sendFormData.lockerSize === "medium" ? "Vừa" : "Lớn"
-          
+
           // Hiển thị danh sách tủ khả dụng
           const availableLockersList = freshLockers.filter(l => (l.status || "").trim() === "available")
           const availableSizes = [...new Set(availableLockersList.map(l => l.size))]
-          const sizeLabels = availableSizes.map(size => 
+          const sizeLabels = availableSizes.map(size =>
             size === "small" ? "Nhỏ" : size === "medium" ? "Vừa" : "Lớn"
           )
-          
+
           if (availableSizes.length > 0) {
-            showError("Lỗi",`Hiện tại tủ ${sizeLabel} đã hết. Mời bạn chọn loại tủ khác để thay thế.\n\nTủ khả dụng: ${sizeLabels.join(", ")}`)
+            showError("Lỗi", `Hiện tại tủ ${sizeLabel} đã hết. Mời bạn chọn loại tủ khác để thay thế.\n\nTủ khả dụng: ${sizeLabels.join(", ")}`)
           } else {
-            showError("Lỗi","Hiện tại không còn tủ trống. Vui lòng thử lại sau.")
+            showError("Lỗi", "Hiện tại không còn tủ trống. Vui lòng thử lại sau.")
           }
         } else {
-          showError("Lỗi","Không có tủ trống. Vui lòng thử lại sau.")
+          showError("Lỗi", "Không có tủ trống. Vui lòng thử lại sau.")
         }
       }
     } catch (error: any) {
       console.error("Lỗi gửi hàng:", error)
-      showError("Lỗi",error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.")
+      showError("Lỗi", error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.")
     } finally {
       setLoading(false)
     }
@@ -420,7 +438,7 @@ export default function SendPackagePage() {
       // Reload danh sách tủ để đảm bảo có dữ liệu mới nhất
       const freshLockers = await getLockers()
       setLockers(freshLockers)
-      
+
       // Kiểm tra xem có tủ trống không
       const availableLockers = freshLockers.filter((l) => (l.status || "").trim() === "available")
       if (availableLockers.length === 0) {
@@ -431,11 +449,11 @@ export default function SendPackagePage() {
 
       // Tìm tủ khả dụng theo kích cỡ được chọn (sử dụng freshLockers)
       let availableLocker = null
-      
+
       if (holdFormData.lockerSize) {
         // Tìm tủ có kích cỡ phù hợp
-        availableLocker = freshLockers.find((l) => 
-          (l.status || "").trim() === "available" && 
+        availableLocker = freshLockers.find((l) =>
+          (l.status || "").trim() === "available" &&
           l.size === holdFormData.lockerSize
         )
       } else {
@@ -449,7 +467,7 @@ export default function SendPackagePage() {
           size: availableLocker.size,
           status: availableLocker.status
         })
-        
+
         // Đảm bảo có senderId trước khi tạo document
         let senderId2 = user?.id
         if (!senderId2 && user?.email) {
@@ -529,7 +547,54 @@ export default function SendPackagePage() {
           setFingerprintUnsubscribe(null)
         }
 
-        // Tạo document delivery_info ngay khi modal vân tay xuất hiện với fingerprintVerified: false
+        // TẠO TRANSACTION NGAY khi user bấm giữ hàng (không đợi fingerprint)
+        // Fingerprint chỉ để xác thực danh tính, không ảnh hưởng đến việc tạo đơn
+        let newOrderId: string
+        try {
+          const newOrder: any = {
+            senderId: senderId2,
+            senderName: user.name,
+            senderPhone: user.phone,
+            senderType: user.customerType || "regular",
+            receiverName: user.name,
+            receiverPhone: SMSService.normalizePhone(user.phone),
+            lockerId: availableLocker.id,
+            status: "delivered" as const,
+            createdAt: new Date(),
+            deliveredAt: new Date(),
+            transactionType: "hold" as const,
+            fingerprintVerified: false,
+          }
+          console.log("📦 Tạo transaction giữ hàng NGAY:", newOrder)
+          newOrderId = await saveTransaction(newOrder)
+          console.log("✅ Đã tạo transaction, ID:", newOrderId)
+
+          // CẬP NHẬT transaction để có field orderId (chính là document ID)
+          try {
+            const transactionRef = doc(db, "transactions", newOrderId)
+            await updateDoc(transactionRef, { orderId: newOrderId })
+            console.log("✅ Đã gắn orderId vào transaction:", newOrderId)
+          } catch (updateTxError) {
+            console.error("❌ Lỗi gắn orderId vào transaction:", updateTxError)
+          }
+        } catch (txError) {
+          console.error("❌ Lỗi tạo transaction:", txError)
+          setLoading(false)
+          await releaseReservedLocker()
+          showError("Lỗi", "Không thể tạo giao dịch. Vui lòng thử lại.")
+          return
+        }
+
+        // Cập nhật tủ với orderId NGAY
+        try {
+          const primaryLockerId = reservedLockerDocId || lockerDocCandidates[0]
+          await updateLockerStatus(primaryLockerId, "occupied", newOrderId, { doorState: "closed" })
+          console.log("✅ Đã gắn orderId vào tủ:", primaryLockerId, "orderId:", newOrderId)
+        } catch (lockerError) {
+          console.error("❌ Lỗi gắn orderId vào tủ:", lockerError)
+        }
+
+        // Tạo delivery_info với orderId có sẵn
         let deliveryInfoId: string | null = null
         try {
           const deliveryInfoData = {
@@ -539,19 +604,17 @@ export default function SendPackagePage() {
             lockerNumber: availableLocker.lockerNumber,
             lockerId: availableLocker.id,
             senderId: senderId2,
-            fingerprintVerified: false, // Đơn giữ hàng chỉ cần vân tay
-            deliveryType: "giu" as const, // Giữ hàng
+            orderId: newOrderId, // orderId có sẵn ngay từ đầu
+            fingerprintVerified: false, // Đợi fingerprint xác thực
+            deliveryType: "giu" as const,
             createdAt: new Date(),
           }
-          console.log("📦 Lưu delivery_info (giữ hàng):", deliveryInfoData)
+          console.log("📦 Lưu delivery_info với orderId có sẵn:", deliveryInfoData)
           deliveryInfoId = await saveDeliveryInfo(deliveryInfoData)
-          console.log("✅ Đã tạo delivery_info với fingerprintVerified: false, ID:", deliveryInfoId)
+          console.log("✅ Đã tạo delivery_info với orderId:", newOrderId, "deliveryInfoId:", deliveryInfoId)
         } catch (e) {
           console.error("Lỗi tạo delivery_info:", e)
-          setLoading(false)
-          await releaseReservedLocker()
-          showError("Lỗi", "Không thể tạo thông tin giao hàng. Vui lòng thử lại.")
-          return
+          // Không return - transaction đã được tạo, chỉ log lỗi
         }
 
         // Lưu deliveryInfoId để theo dõi
@@ -574,12 +637,13 @@ export default function SendPackagePage() {
 
         // Tạo real-time listener để theo dõi trạng thái vân tay
         const deliveryInfoRef = doc(db, "delivery_info", deliveryInfoId)
-        
+
         // Flag để tránh xử lý nhiều lần
         let isProcessing = false
         let pollIntervalId: NodeJS.Timeout | null = null
-        
+
         // Hàm xử lý khi phát hiện vân tay đã được xác thực
+        // Transaction đã được tạo sẵn với orderId, chỉ cần cập nhật trạng thái
         const handleFingerprintVerified = async (unsubscribeFn: Unsubscribe) => {
           // Tránh xử lý nhiều lần
           if (isProcessing) {
@@ -587,21 +651,21 @@ export default function SendPackagePage() {
             return
           }
           isProcessing = true
-          
+
           console.log("✅ Vân tay đã được xác thực!")
-          
+
           // Dừng polling nếu có
           if (pollIntervalId) {
             clearInterval(pollIntervalId)
             pollIntervalId = null
           }
-          
+
           // Dừng listener ngay lập tức
           unsubscribeFn()
           setFingerprintUnsubscribe(null)
           setCurrentDeliveryInfoId(null)
-          
-          // Hủy timeout vì đã nhận được vân tay (không xóa document nữa)
+
+          // Hủy timeout vì đã nhận được vân tay
           const currentTimeout = fingerprintTimeout
           if (currentTimeout) {
             clearTimeout(currentTimeout)
@@ -610,96 +674,41 @@ export default function SendPackagePage() {
 
           // Đóng modal vân tay ngay lập tức
           setShowFingerprintModal(false)
-          
-          // Hiển thị thông báo "Đã nhận vân tay" ngay lập tức
-          showSuccess("Xác thực thành công", "Đã nhận vân tay thành công!")
 
           try {
-            const newOrder: any = {
-              senderId: senderId2,
-              senderName: user.name,
-              senderPhone: user.phone,
-              senderType: user.customerType || "regular",
-              receiverName: user.name,
-              receiverPhone: SMSService.normalizePhone(user.phone),
-              lockerId: availableLocker.id,
-              status: "delivered" as const,
-              createdAt: new Date(),
-              deliveredAt: new Date(),
-              transactionType: "hold" as const,
-            }
-            
-            console.log("📦 Đang lưu transaction giữ hàng:", newOrder)
-            // Lưu giao dịch vào Firestore - ĐẢM BẢO LUÔN LƯU TRƯỚC
-            let newOrderId: string
-            try {
-              newOrderId = await saveTransaction(newOrder)
-              console.log("✅ Đã lưu transaction giữ hàng thành công, ID:", newOrderId)
-            } catch (txError) {
-              console.error("❌ LỖI NGHIÊM TRỌNG: Không thể lưu transaction:", txError)
-              showError("Lỗi", "Không thể lưu giao dịch. Vui lòng thử lại.")
-              return
-            }
-            
-            // Cập nhật delivery_info với orderId (giữ nguyên fingerprintVerified: true)
-            // Hàm updateDeliveryInfo sẽ tự động xóa document nếu có fingerprintData
-            try {
-              await updateDeliveryInfo(deliveryInfoId, {
-                orderId: newOrderId,
-                // Không xóa field fingerprintVerified, giữ nguyên giá trị true
-              })
-              console.log("✅ Đã cập nhật delivery_info với orderId:", newOrderId)
-              
-              // Đảm bảo xóa document nếu có fingerprintData (backup check)
-              // Nếu updateDeliveryInfo không xóa (do document đã bị xóa hoặc lỗi), cleanupDeliveryInfo sẽ xử lý
+            // Cập nhật fingerprintVerified = true cho delivery_info
+            if (deliveryInfoId) {
               try {
-                await cleanupDeliveryInfo(deliveryInfoId)
-              } catch (cleanupError) {
-                // Không quan trọng nếu cleanup thất bại (có thể document đã bị xóa)
-                console.log("ℹ️ Cleanup delivery_info (có thể document đã bị xóa):", cleanupError)
+                await updateDeliveryInfo(deliveryInfoId, {
+                  fingerprintVerified: true,
+                })
+                console.log("✅ Đã cập nhật fingerprintVerified = true cho delivery_info")
+              } catch (e) {
+                console.error("Lỗi cập nhật fingerprintVerified cho delivery_info:", e)
               }
-            } catch (e) {
-              console.error("Lỗi cập nhật delivery_info:", e)
             }
-            
+
+            // Mở cửa tủ
             try {
               const primaryLockerId = reservedLockerDocId || lockerDocCandidates[0]
-              await updateLockerStatus(primaryLockerId, "occupied", newOrderId)
               const lockerRef = doc(db, "lockers", primaryLockerId)
               await updateDoc(lockerRef, {
                 door: "open",
                 lastUpdated: new Date()
               })
-              console.log("✅ Đã gắn orderId và mở cửa tủ:", primaryLockerId)
+              console.log("✅ Đã mở cửa tủ:", primaryLockerId)
               setReservedLockerState(null)
               reservedLockerRef.current = null
-            } catch (updateError) {
-              console.error("❌ Lỗi cập nhật trạng thái tủ với ID chính:", updateError)
-              const fallbackId = lockerDocCandidates.find((id) => id !== reservedLockerDocId)
-              if (fallbackId) {
-                try {
-                  await updateLockerStatus(fallbackId, "occupied", newOrderId)
-                  const fallbackRef = doc(db, "lockers", fallbackId)
-                  await updateDoc(fallbackRef, {
-                    door: "open",
-                    lastUpdated: new Date()
-                  })
-                  console.log("✅ Đã cập nhật trạng thái tủ bằng fallback ID:", fallbackId)
-                  setReservedLockerState(null)
-                  reservedLockerRef.current = null
-                } catch (fallbackError) {
-                  console.error("❌ Không thể cập nhật trạng thái tủ bằng fallback:", fallbackError)
-                }
-              }
+            } catch (doorError) {
+              console.error("❌ Lỗi mở cửa tủ:", doorError)
             }
 
-            // Gửi thông báo cho admin (không chặn luồng nếu lỗi)
+            // Gửi thông báo cho admin
             try {
               await saveNotification({
                 type: "customer_action",
-                message: `${user.name} đã giữ hàng tại tủ ${availableLocker.lockerNumber}`,
+                message: `${user.name} đã xác thực vân tay và giữ hàng tại tủ ${availableLocker.lockerNumber}`,
                 lockerId: availableLocker.id,
-                // Không có customerId để admin có thể thấy
                 orderId: newOrderId,
                 isRead: false,
                 createdAt: new Date(),
@@ -707,20 +716,20 @@ export default function SendPackagePage() {
             } catch (e) {
               console.error("Lỗi gửi thông báo:", e)
             }
-            
-            // Hiển thị thông báo thành công cuối cùng
+
+            // Hiển thị thông báo thành công
             const sizeLabel = availableLocker.size === "small" ? "Nhỏ" : availableLocker.size === "medium" ? "Vừa" : "Lớn"
             showSuccess("Thành công", `Giữ hàng thành công! Tủ số: ${availableLocker.lockerNumber} (Kích cỡ: ${sizeLabel})`)
             setHoldFormData({ lockerSize: "" })
           } catch (error) {
-            console.error("Lỗi giữ hàng:", error)
+            console.error("Lỗi xử lý sau xác thực vân tay:", error)
             showError("Lỗi", "Đã xảy ra lỗi. Vui lòng thử lại.")
           }
         }
-        
+
         // Tạo listener để theo dõi thay đổi real-time
         const unsubscribe = onSnapshot(
-          deliveryInfoRef, 
+          deliveryInfoRef,
           async (snapshot) => {
             if (!snapshot.exists()) {
               console.log("⚠️ Document delivery_info không tồn tại")
@@ -756,24 +765,24 @@ export default function SendPackagePage() {
               await handleFingerprintVerified(unsubscribe)
               return
             }
-            
+
             // Log nếu chưa được xác thực
             if (data.fingerprintVerified === false || data.fingerprintVerified === "false" || data.fingerprintVerified === 0) {
               console.log("⏳ Vân tay chưa được xác thực, đang chờ...")
             } else {
               console.log("❓ Giá trị fingerprintVerified không xác định:", data.fingerprintVerified)
             }
-          }, 
+          },
           (error) => {
             console.error("Lỗi listener delivery_info:", error)
             setShowFingerprintModal(false)
             showError("Lỗi", "Đã xảy ra lỗi khi theo dõi trạng thái vân tay.")
           }
         )
-        
+
         // Lưu unsubscribe function trước
         setFingerprintUnsubscribe(unsubscribe)
-        
+
         // Kiểm tra ngay lập tức khi listener được thiết lập xem document đã có fingerprintVerified: true chưa
         const checkInitialState = async () => {
           try {
@@ -794,13 +803,13 @@ export default function SendPackagePage() {
           }
           return false
         }
-        
+
         // Kiểm tra ngay lập tức
         const alreadyVerified = await checkInitialState()
         if (alreadyVerified) {
           return
         }
-        
+
         // Thêm polling mỗi 1 giây để đảm bảo không bỏ sót thay đổi (backup cho listener)
         pollIntervalId = setInterval(async () => {
           try {
@@ -822,7 +831,7 @@ export default function SendPackagePage() {
             console.error("Lỗi polling:", e)
           }
         }, 1000) // Kiểm tra mỗi 1 giây
-        
+
         // Lưu interval để cleanup sau
         const originalUnsubscribe = unsubscribe
         const enhancedUnsubscribe = () => {
@@ -833,11 +842,11 @@ export default function SendPackagePage() {
           originalUnsubscribe()
         }
         setFingerprintUnsubscribe(enhancedUnsubscribe)
-        
+
         // Tạo timeout 60 giây để xóa document nếu không nhận được vân tay
         const timeoutId = setTimeout(async () => {
           console.log("⏰ Hết 60 giây, chưa nhận được vân tay")
-          
+
           // Kiểm tra lại trạng thái trước khi xóa (phòng trường hợp vân tay được xác thực ngay trước khi timeout)
           try {
             const deliveryInfoRef = doc(db, "delivery_info", deliveryInfoId)
@@ -850,11 +859,11 @@ export default function SendPackagePage() {
           } catch (e) {
             console.error("Lỗi kiểm tra trạng thái:", e)
           }
-          
+
           // Dừng listener
           unsubscribe()
           setFingerprintUnsubscribe(null)
-          
+
           // Chỉ xóa document nếu chưa được xác thực
           try {
             await deleteDeliveryInfo(deliveryInfoId)
@@ -863,7 +872,7 @@ export default function SendPackagePage() {
             console.error("Lỗi xóa delivery_info:", e)
           }
           await releaseReservedLocker()
-          
+
           // Đóng modal và báo lỗi
           setShowFingerprintModal(false)
           setCurrentDeliveryInfoId(null)
@@ -871,33 +880,33 @@ export default function SendPackagePage() {
           showError("Hết thời gian", "Đã hết 60 giây mà không nhận được xác thực vân tay. Vui lòng thử lại.")
           setHoldFormData({ lockerSize: "" })
         }, 60000) // 60 giây
-        
+
         setFingerprintTimeout(timeoutId)
       } else {
         if (holdFormData.lockerSize) {
           const sizeLabel = holdFormData.lockerSize === "small" ? "Nhỏ" : holdFormData.lockerSize === "medium" ? "Vừa" : "Lớn"
-          
+
           // Hiển thị danh sách tủ khả dụng (sử dụng freshLockers)
           const availableLockersList = freshLockers.filter(l => (l.status || "").trim() === "available")
           const availableSizes = [...new Set(availableLockersList.map(l => l.size))]
-          const sizeLabels = availableSizes.map(size => 
+          const sizeLabels = availableSizes.map(size =>
             size === "small" ? "Nhỏ" : size === "medium" ? "Vừa" : "Lớn"
           )
-          
+
           if (availableSizes.length > 0) {
-            showError("Lỗi",`Hiện tại tủ ${sizeLabel} đã hết. Mời bạn chọn loại tủ khác để thay thế.\n\nTủ khả dụng: ${sizeLabels.join(", ")}`)
+            showError("Lỗi", `Hiện tại tủ ${sizeLabel} đã hết. Mời bạn chọn loại tủ khác để thay thế.\n\nTủ khả dụng: ${sizeLabels.join(", ")}`)
           } else {
-            showError("Lỗi","Hiện tại không còn tủ trống. Vui lòng thử lại sau.")
+            showError("Lỗi", "Hiện tại không còn tủ trống. Vui lòng thử lại sau.")
           }
         } else {
-          showError("Lỗi","Không có tủ trống. Vui lòng thử lại sau.")
+          showError("Lỗi", "Không có tủ trống. Vui lòng thử lại sau.")
         }
         setLoading(false)
       }
     } catch (error) {
       console.error("Lỗi giữ hàng:", error)
       await releaseReservedLocker()
-      showError("Lỗi","Đã xảy ra lỗi. Vui lòng thử lại.")
+      showError("Lỗi", "Đã xảy ra lỗi. Vui lòng thử lại.")
       setLoading(false)
     }
   }
@@ -1058,8 +1067,8 @@ export default function SendPackagePage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog 
-        open={showFingerprintModal} 
+      <Dialog
+        open={showFingerprintModal}
         onOpenChange={async (open) => {
           if (!open) {
             // Đóng modal và cleanup listener và timeout
@@ -1071,7 +1080,7 @@ export default function SendPackagePage() {
               clearTimeout(fingerprintTimeout)
               setFingerprintTimeout(null)
             }
-            
+
             // Chỉ xóa document delivery_info nếu chưa được xác thực
             if (currentDeliveryInfoId) {
               try {
@@ -1131,14 +1140,14 @@ export default function SendPackagePage() {
             </div>
           </div>
           <DialogFooter className="flex gap-2">
-            <Button 
+            <Button
               onClick={() => setShowDuplicateModal(false)}
               variant="outline"
               className="flex-1"
             >
               Hủy
             </Button>
-            <Button 
+            <Button
               onClick={() => {
                 setShowDuplicateModal(false)
                 // Chuyển sang tab giữ hàng và điền thông tin
@@ -1173,7 +1182,7 @@ export default function SendPackagePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button 
+            <Button
               onClick={() => {
                 setShowSuccessModal(false)
                 router.push("/customer/history")
@@ -1203,7 +1212,7 @@ export default function SendPackagePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button 
+            <Button
               onClick={() => setShowErrorModal(false)}
               className="w-full bg-red-600 hover:bg-red-700 text-white"
             >
