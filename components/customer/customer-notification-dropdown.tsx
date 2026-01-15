@@ -84,6 +84,8 @@ export function CustomerNotificationDropdown() {
         return "⚠️"
       case "customer_action":
         return "📦"
+      case "pickup":
+        return "✅"
       default:
         return "ℹ️"
     }

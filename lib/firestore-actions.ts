@@ -149,6 +149,22 @@ export async function autoCleanupDeliveryInfoWithLockerReset(deliveryInfoId: str
       return false
     }
 
+    // ✅ QUAN TRỌNG: Kiểm tra fingerprintVerified
+    // Nếu fingerprintVerified = true, document đã được xác thực thành công → KHÔNG xóa
+    const isFingerprintVerified = (value: any) => {
+      if (value === true || value === 1) return true
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase()
+        return normalized === "true" || normalized === "1"
+      }
+      return !!value
+    }
+
+    if (isFingerprintVerified(data.fingerprintVerified)) {
+      console.log(`⚠️ delivery_info ${deliveryInfoId} đã được xác thực vân tay (fingerprintVerified = true), không xóa`)
+      return false
+    }
+
     // QUAN TRỌNG: Kiểm tra xem đã có orderId chưa
     // Nếu chưa có orderId, nghĩa là transaction chưa được tạo → KHÔNG xóa
     if (!data.orderId) {
@@ -772,6 +788,19 @@ export async function pickupPackage(transactionId: string) {
 
     const transactionData = transactionSnap.data();
     const lockerId = transactionData.lockerId;
+    
+    // Lấy thông tin tủ để biết lockerNumber
+    let lockerNumber = lockerId;
+    try {
+      const lockerRef = doc(db, "lockers", lockerId);
+      const lockerSnap = await getDoc(lockerRef);
+      if (lockerSnap.exists()) {
+        const lockerData = lockerSnap.data();
+        lockerNumber = lockerData.lockerNumber || lockerId;
+      }
+    } catch (e) {
+      console.warn("Không thể lấy thông tin tủ:", e);
+    }
 
     // Cập nhật transaction status thành picked_up
     await updateTransactionStatus(transactionId, "picked_up");
@@ -789,6 +818,25 @@ export async function pickupPackage(transactionId: string) {
       door: "open", // Mở cửa khi nhận hàng
       lastUpdated: new Date()
     });
+
+    // ✅ Gửi thông báo cho khách hàng khi nhận hàng thành công
+    try {
+      const receiverId = transactionData.receiverId || transactionData.senderId;
+      if (receiverId) {
+        await saveNotification({
+          type: "customer_action",
+          message: `Bạn đã lấy hàng thành công từ tủ ${lockerNumber}`,
+          customerId: receiverId,
+          lockerId: lockerId,
+          orderId: transactionId,
+          isRead: false,
+          createdAt: new Date(),
+        });
+        console.log(`✅ Đã gửi thông báo lấy hàng cho khách hàng: ${receiverId}`);
+      }
+    } catch (notificationError) {
+      console.error("Lỗi gửi thông báo lấy hàng:", notificationError);
+    }
 
     console.log(`✅ Đã xử lý nhận hàng: Transaction ${transactionId}, Locker ${lockerId} đã được reset và mở cửa`);
 
@@ -852,6 +900,41 @@ export async function verifyPickupCode(code: string, phone: string): Promise<{ s
     return { success: false };
   } catch (error) {
     console.error("Lỗi khi kiểm tra mã lấy hàng:", error);
+    throw error;
+  }
+}
+
+// Xử lý nhận hàng từ notification của phần cứng
+export async function handlePickupFromNotification(orderId: string, lockerNumber?: string): Promise<{ success: boolean; message?: string }> {
+  try {
+    // Kiểm tra transaction có tồn tại không
+    const transactionRef = doc(db, "transactions", orderId);
+    const transactionSnap = await getDoc(transactionRef);
+
+    if (!transactionSnap.exists()) {
+      return { success: false, message: "Không tìm thấy giao dịch" };
+    }
+
+    const transactionData = transactionSnap.data();
+    
+    // Kiểm tra trạng thái hiện tại
+    if (transactionData.status === "picked_up") {
+      console.log(`⚠️ Transaction ${orderId} đã được nhận hàng trước đó`);
+      return { success: true, message: "Đơn hàng đã được nhận hàng trước đó" };
+    }
+
+    if (transactionData.status !== "delivered") {
+      return { success: false, message: `Trạng thái đơn hàng không hợp lệ: ${transactionData.status}` };
+    }
+
+    // Gọi hàm pickupPackage để xử lý nhận hàng
+    await pickupPackage(orderId);
+
+    console.log(`✅ Đã xử lý nhận hàng từ phần cứng: Transaction ${orderId}, Locker ${lockerNumber || transactionData.lockerId}`);
+
+    return { success: true, message: "Đã cập nhật trạng thái nhận hàng thành công" };
+  } catch (error) {
+    console.error("Lỗi khi xử lý nhận hàng từ notification:", error);
     throw error;
   }
 }

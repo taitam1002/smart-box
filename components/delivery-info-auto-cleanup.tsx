@@ -36,7 +36,18 @@ export function DeliveryInfoAutoCleanup() {
           }
 
           // Kiểm tra nếu document có fingerprintData (ESP đã gửi lên)
-          if (data.fingerprintData) {
+          // ✅ QUAN TRỌNG: CHỈ xóa nếu CHƯA được xác thực vân tay
+          // Nếu fingerprintVerified = true, document đã được xác thực thành công → KHÔNG xóa
+          const isFingerprintVerified = (value: any) => {
+            if (value === true || value === 1) return true
+            if (typeof value === "string") {
+              const normalized = value.trim().toLowerCase()
+              return normalized === "true" || normalized === "1"
+            }
+            return !!value
+          }
+
+          if (data.fingerprintData && !isFingerprintVerified(data.fingerprintVerified)) {
             console.log(`📡 Phát hiện fingerprintData trong document ${docId}, bắt đầu xử lý...`)
             
             // Đánh dấu đã xử lý ngay để tránh xử lý nhiều lần
@@ -58,6 +69,8 @@ export function DeliveryInfoAutoCleanup() {
               // Xóa khỏi processedDocs để có thể thử lại
               processedDocs.delete(docId)
             }
+          } else if (data.fingerprintData && isFingerprintVerified(data.fingerprintVerified)) {
+            console.log(`⚠️ Document ${docId} có fingerprintData nhưng đã được xác thực (fingerprintVerified = true), bỏ qua xóa`)
           }
         }
 
@@ -83,6 +96,8 @@ export function DeliveryInfoAutoCleanup() {
   // Component này không render gì
   return null
 }
+
+
 
 
 

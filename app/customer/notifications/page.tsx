@@ -18,6 +18,7 @@ const notificationIcons = {
   warning: AlertCircle,
   info: Info,
   customer_action: Package,
+  pickup: CheckCircle,
 }
 
 const notificationColors = {
@@ -25,6 +26,7 @@ const notificationColors = {
   warning: "text-orange-600 bg-orange-50 border-orange-200",
   info: "text-blue-600 bg-blue-50 border-blue-200",
   customer_action: "text-green-600 bg-green-50 border-green-200",
+  pickup: "text-purple-600 bg-purple-50 border-purple-200",
 }
 
 export default function CustomerNotificationsPage() {

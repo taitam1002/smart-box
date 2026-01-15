@@ -15,7 +15,7 @@ import { saveTransaction, getLockers, updateLockerStatus, saveNotification, find
 import { SMSService } from "@/lib/sms-service"
 import { Package, Archive, Fingerprint } from "lucide-react"
 import { db } from "@/lib/firebase"
-import { doc, onSnapshot, Unsubscribe, getDoc, updateDoc } from "firebase/firestore"
+import { doc, onSnapshot, Unsubscribe, getDoc, updateDoc, deleteDoc } from "firebase/firestore"
 
 export default function SendPackagePage() {
   const router = useRouter()
@@ -53,6 +53,10 @@ export default function SendPackagePage() {
   const [currentDeliveryInfoId, setCurrentDeliveryInfoId] = useState<string | null>(null)
   const [fingerprintUnsubscribe, setFingerprintUnsubscribe] = useState<Unsubscribe | null>(null)
   const [fingerprintTimeout, setFingerprintTimeout] = useState<NodeJS.Timeout | null>(null)
+  // State để hiển thị trạng thái "đã nhận vân tay" trong modal
+  const [fingerprintReceived, setFingerprintReceived] = useState(false)
+  // State để lưu số tủ đang xử lý (để hiển thị trong modal)
+  const [currentLockerNumber, setCurrentLockerNumber] = useState<string | null>(null)
 
   useEffect(() => {
     const currentUser = getCurrentUser()
@@ -101,8 +105,7 @@ export default function SendPackagePage() {
   }
 
   // Kiểm tra định kỳ fingerprintVerified khi modal đang mở (backup cho listener)
-  // LƯU Ý: Không tự xử lý transaction ở đây - để listener chính (onSnapshot) xử lý
-  // useEffect này chỉ để phát hiện và log nếu listener có vấn đề
+  // ✅ SỬA: Cập nhật UI ngay khi phát hiện fingerprintVerified = true
   useEffect(() => {
     if (!showFingerprintModal || !currentDeliveryInfoId) {
       return
@@ -127,6 +130,8 @@ export default function SendPackagePage() {
               deliveryType: data.deliveryType
             })
             alreadyDetected = true
+            // ✅ QUAN TRỌNG: Cập nhật UI ngay lập tức
+            setFingerprintReceived(true)
             // QUAN TRỌNG: KHÔNG đóng modal ở đây - để listener chính xử lý
             // Listener chính sẽ tạo transaction và gắn orderId
           }
@@ -619,24 +624,25 @@ export default function SendPackagePage() {
 
         // Lưu deliveryInfoId để theo dõi
         setCurrentDeliveryInfoId(deliveryInfoId)
+        setCurrentLockerNumber(availableLocker.lockerNumber) // Lưu số tủ để hiển thị
         setLoading(false)
+        setFingerprintReceived(false) // Reset state khi mở modal mới
         setShowFingerprintModal(true)
 
-        // Báo cho admin biết ngay khi khách bắt đầu quy trình giữ hàng
-        try {
-          await saveNotification({
-            type: "customer_action",
-            message: `${user.name || "Khách hàng"} đang xác nhận giữ hàng tại tủ ${availableLocker.lockerNumber}`,
-            lockerId: availableLocker.id,
-            isRead: false,
-            createdAt: new Date(),
-          })
-        } catch (notifyError) {
-          console.error("Lỗi gửi thông báo giữ hàng ban đầu:", notifyError)
-        }
+        // ✅ Bỏ thông báo "đang xác nhận giữ hàng" - chỉ thông báo khi thành công
 
         // Tạo real-time listener để theo dõi trạng thái vân tay
+        // ✅ QUAN TRỌNG: Kiểm tra deliveryInfoId trước khi tạo listener
+        if (!deliveryInfoId) {
+          console.error("❌ deliveryInfoId là null, không thể tạo listener!")
+          setLoading(false)
+          setShowFingerprintModal(false)
+          showError("Lỗi", "Không thể tạo delivery_info. Vui lòng thử lại.")
+          return
+        }
+        
         const deliveryInfoRef = doc(db, "delivery_info", deliveryInfoId)
+        console.log("🔍 Tạo listener cho deliveryInfoId:", deliveryInfoId)
 
         // Flag để tránh xử lý nhiều lần
         let isProcessing = false
@@ -653,6 +659,21 @@ export default function SendPackagePage() {
           isProcessing = true
 
           console.log("✅ Vân tay đã được xác thực!")
+          console.log("🔍 deliveryInfoId:", deliveryInfoId)
+          console.log("🔍 newOrderId:", newOrderId)
+
+          // ✅ Cập nhật UI để hiển thị "đã nhận vân tay" TRƯỚC khi đóng modal
+          setFingerprintReceived(true)
+          
+          // Force update UI bằng cách set state
+          setLoading(false)
+          
+          // Đợi một chút để người dùng thấy trạng thái "đã nhận vân tay"
+          await new Promise(resolve => setTimeout(resolve, 1500))
+          
+          // Sau đó mới đóng modal
+          setShowFingerprintModal(false)
+          setFingerprintReceived(false) // Reset state
 
           // Dừng polling nếu có
           if (pollIntervalId) {
@@ -672,9 +693,6 @@ export default function SendPackagePage() {
             setFingerprintTimeout(null)
           }
 
-          // Đóng modal vân tay ngay lập tức
-          setShowFingerprintModal(false)
-
           try {
             // Cập nhật fingerprintVerified = true cho delivery_info
             if (deliveryInfoId) {
@@ -688,19 +706,49 @@ export default function SendPackagePage() {
               }
             }
 
-            // Mở cửa tủ
+            // ✅ QUAN TRỌNG: Đảm bảo tủ ở trạng thái "occupied" và mở cửa
             try {
               const primaryLockerId = reservedLockerDocId || lockerDocCandidates[0]
               const lockerRef = doc(db, "lockers", primaryLockerId)
-              await updateDoc(lockerRef, {
-                door: "open",
-                lastUpdated: new Date()
-              })
-              console.log("✅ Đã mở cửa tủ:", primaryLockerId)
+              
+              // Kiểm tra trạng thái hiện tại của tủ
+              const lockerSnap = await getDoc(lockerRef)
+              if (lockerSnap.exists()) {
+                const lockerData = lockerSnap.data()
+                console.log("🔍 Trạng thái tủ hiện tại:", lockerData.status, "currentOrderId:", lockerData.currentOrderId)
+                
+                // Nếu tủ đã bị reset về "available" (do race condition), đặt lại về "occupied"
+                if (lockerData.status === "available" || lockerData.currentOrderId !== newOrderId) {
+                  console.log("⚠️ Phát hiện tủ đã bị reset về available hoặc currentOrderId không khớp, đặt lại về occupied")
+                  await updateLockerStatus(primaryLockerId, "occupied", newOrderId, { doorState: "open" })
+                  console.log("✅ Đã đặt lại tủ về occupied và mở cửa:", primaryLockerId)
+                } else {
+                  // Tủ đã ở trạng thái occupied, chỉ cần mở cửa
+                  await updateDoc(lockerRef, {
+                    door: "open",
+                    lastUpdated: new Date()
+                  })
+                  console.log("✅ Đã mở cửa tủ (tủ đã ở trạng thái occupied):", primaryLockerId)
+                }
+              } else {
+                // Nếu không tìm thấy tủ, thử đặt lại về occupied
+                console.log("⚠️ Không tìm thấy tủ, thử đặt lại về occupied")
+                await updateLockerStatus(primaryLockerId, "occupied", newOrderId, { doorState: "open" })
+                console.log("✅ Đã đặt lại tủ về occupied và mở cửa:", primaryLockerId)
+              }
+              
               setReservedLockerState(null)
               reservedLockerRef.current = null
             } catch (doorError) {
               console.error("❌ Lỗi mở cửa tủ:", doorError)
+              // Thử lại với updateLockerStatus nếu updateDoc thất bại
+              try {
+                const primaryLockerId = reservedLockerDocId || lockerDocCandidates[0]
+                await updateLockerStatus(primaryLockerId, "occupied", newOrderId, { doorState: "open" })
+                console.log("✅ Đã sửa lại tủ bằng updateLockerStatus:", primaryLockerId)
+              } catch (retryError) {
+                console.error("❌ Lỗi retry mở cửa tủ:", retryError)
+              }
             }
 
             // Gửi thông báo cho admin
@@ -717,6 +765,42 @@ export default function SendPackagePage() {
               console.error("Lỗi gửi thông báo:", e)
             }
 
+            // ✅ Gửi thông báo cho chính khách hàng khi giữ hàng thành công
+            try {
+              // QUAN TRỌNG: Notification dropdown query theo currentUser.id và cả ID từ email
+              // Nên cần gửi notification cho CẢ HAI ID để đảm bảo hiển thị
+              const customerIds = new Set<string>()
+              if (user?.id) customerIds.add(user.id)
+              if (senderId2) customerIds.add(senderId2)
+              
+              console.log("🔍 Debug thông báo giữ hàng:", {
+                user_id: user?.id,
+                senderId2: senderId2,
+                customerIds: Array.from(customerIds),
+                lockerNumber: availableLocker.lockerNumber
+              })
+              
+              // Gửi notification cho tất cả các ID có thể
+              const notificationPromises = Array.from(customerIds).map(async (customerId) => {
+                const notificationData = {
+                  type: "customer_action" as const,
+                  message: `Bạn đã giữ hàng thành công tại tủ ${availableLocker.lockerNumber}`,
+                  customerId: customerId,
+                  lockerId: availableLocker.id,
+                  orderId: newOrderId,
+                  isRead: false,
+                  createdAt: new Date(),
+                }
+                console.log("📤 Gửi thông báo giữ hàng cho customerId:", customerId)
+                return saveNotification(notificationData)
+              })
+              
+              await Promise.all(notificationPromises)
+              console.log("✅ Đã gửi thông báo giữ hàng cho tất cả customerIds:", Array.from(customerIds))
+            } catch (e) {
+              console.error("❌ Lỗi gửi thông báo giữ hàng cho khách hàng:", e)
+            }
+
             // Hiển thị thông báo thành công
             const sizeLabel = availableLocker.size === "small" ? "Nhỏ" : availableLocker.size === "medium" ? "Vừa" : "Lớn"
             showSuccess("Thành công", `Giữ hàng thành công! Tủ số: ${availableLocker.lockerNumber} (Kích cỡ: ${sizeLabel})`)
@@ -728,21 +812,77 @@ export default function SendPackagePage() {
         }
 
         // Tạo listener để theo dõi thay đổi real-time
+        console.log("🔧 Bắt đầu thiết lập listener cho deliveryInfoId:", deliveryInfoId)
+        
+        // ✅ QUAN TRỌNG: Đảm bảo listener được thiết lập với includeMetadataChanges để bắt mọi thay đổi
         const unsubscribe = onSnapshot(
           deliveryInfoRef,
+          {
+            includeMetadataChanges: true // Bắt cả metadata changes
+          },
           async (snapshot) => {
+            console.log("📡 Listener được gọi! Metadata changed:", snapshot.metadata.hasPendingWrites, "From cache:", snapshot.metadata.fromCache)
+            
             if (!snapshot.exists()) {
               console.log("⚠️ Document delivery_info không tồn tại")
               return
             }
 
             const data = snapshot.data()
-            console.log("📡 Nhận được cập nhật delivery_info:", data)
+            console.log("📡 Nhận được cập nhật delivery_info:", JSON.stringify(data, null, 2))
             console.log("🔍 Kiểm tra fingerprintVerified:", data.fingerprintVerified, "Type:", typeof data.fingerprintVerified)
+            
+            // Kiểm tra chi tiết giá trị
+            if (data.fingerprintVerified === true) {
+              console.log("✅ fingerprintVerified === true (boolean)")
+            } else if (data.fingerprintVerified === 1) {
+              console.log("✅ fingerprintVerified === 1 (number)")
+            } else if (data.fingerprintVerified === "true") {
+              console.log("✅ fingerprintVerified === 'true' (string)")
+            } else if (data.fingerprintVerified === "1") {
+              console.log("✅ fingerprintVerified === '1' (string)")
+            } else {
+              console.log("❌ fingerprintVerified không phải true/1/'true'/'1':", data.fingerprintVerified)
+            }
+            
+            // ✅ SỬA: Kiểm tra fingerprintVerified TRƯỚC fingerprintData
+            // Kiểm tra nếu vân tay đã được xác thực (chấp nhận nhiều định dạng từ thiết bị)
+            const verified = isFingerprintVerified(data.fingerprintVerified)
+            console.log("🔍 Kết quả isFingerprintVerified:", verified)
+            
+            if (verified) {
+              console.log("✅ Phát hiện fingerprintVerified = true, xử lý ngay lập tức!")
+              // ✅ Cập nhật UI để hiển thị "đã nhận vân tay"
+              setFingerprintReceived(true)
+              // Force update UI
+              setLoading(false)
+              await handleFingerprintVerified(unsubscribe)
+              return
+            }
 
             // TỰ ĐỘNG XÓA: Nếu document có fingerprintData (đơn giữ hàng), tự động xóa và reset tủ
-            if (data.deliveryType === "giu" && data.fingerprintData) {
-              console.log("🗑️ Phát hiện fingerprintData trong listener, tự động xóa document và reset tủ")
+            // CHỈ xóa nếu CHƯA được xác thực vân tay (để tránh xóa khi đã xác thực thành công)
+            // ✅ QUAN TRỌNG: Kiểm tra lại fingerprintVerified một lần nữa để tránh race condition
+            const verifiedCheck = isFingerprintVerified(data.fingerprintVerified)
+            if (data.deliveryType === "giu" && data.fingerprintData && !verifiedCheck) {
+              console.log("🗑️ Phát hiện fingerprintData trong listener, kiểm tra lại fingerprintVerified:", verifiedCheck)
+              
+              // Đợi một chút để đảm bảo không có race condition với việc set fingerprintVerified: true
+              await new Promise(resolve => setTimeout(resolve, 500))
+              
+              // Kiểm tra lại một lần nữa sau khi đợi
+              const recheckSnapshot = await getDoc(deliveryInfoRef)
+              if (recheckSnapshot.exists()) {
+                const recheckData = recheckSnapshot.data()
+                const recheckVerified = isFingerprintVerified(recheckData.fingerprintVerified)
+                
+                if (recheckVerified) {
+                  console.log("✅ Sau khi đợi, phát hiện fingerprintVerified đã là true, bỏ qua xóa")
+                  return // Không xóa, để listener xử lý fingerprintVerified
+                }
+              }
+              
+              console.log("🗑️ Xác nhận fingerprintVerified vẫn chưa là true, tiến hành xóa và reset tủ")
               try {
                 await autoCleanupDeliveryInfoWithLockerReset(deliveryInfoId)
                 console.log("✅ Đã tự động xóa delivery_info có fingerprintData và reset tủ")
@@ -755,15 +895,8 @@ export default function SendPackagePage() {
               setCurrentDeliveryInfoId(null)
               setShowFingerprintModal(false)
               return
-            }
-
-            // Kiểm tra nếu vân tay đã được xác thực (chấp nhận nhiều định dạng từ thiết bị)
-            if (isFingerprintVerified(data.fingerprintVerified)) {
-              console.log("✅ Phát hiện fingerprintVerified = true, xử lý ngay lập tức!")
-              // Đóng modal ngay lập tức trước khi xử lý
-              setShowFingerprintModal(false)
-              await handleFingerprintVerified(unsubscribe)
-              return
+            } else if (data.deliveryType === "giu" && data.fingerprintData && verifiedCheck) {
+              console.log("⚠️ Document có fingerprintData nhưng fingerprintVerified đã là true, bỏ qua xóa")
             }
 
             // Log nếu chưa được xác thực
@@ -790,13 +923,21 @@ export default function SendPackagePage() {
             if (initialSnapshot.exists()) {
               const initialData = initialSnapshot.data()
               console.log("🔍 Kiểm tra trạng thái ban đầu:", initialData)
-              if (isFingerprintVerified(initialData.fingerprintVerified)) {
+              console.log("🔍 fingerprintVerified ban đầu:", initialData.fingerprintVerified, "Type:", typeof initialData.fingerprintVerified)
+              const verified = isFingerprintVerified(initialData.fingerprintVerified)
+              console.log("🔍 Kết quả kiểm tra ban đầu:", verified)
+              
+              if (verified) {
                 console.log("✅ Document đã có fingerprintVerified: true ngay từ đầu!")
-                // Đóng modal ngay lập tức
-                setShowFingerprintModal(false)
+                // ✅ Cập nhật UI để hiển thị "đã nhận vân tay"
+                setFingerprintReceived(true)
                 await handleFingerprintVerified(unsubscribe)
                 return true
+              } else {
+                console.log("⏳ Document chưa có fingerprintVerified: true, tiếp tục chờ...")
               }
+            } else {
+              console.log("⚠️ Document không tồn tại khi kiểm tra ban đầu")
             }
           } catch (e) {
             console.error("Lỗi kiểm tra trạng thái ban đầu:", e)
@@ -807,6 +948,7 @@ export default function SendPackagePage() {
         // Kiểm tra ngay lập tức
         const alreadyVerified = await checkInitialState()
         if (alreadyVerified) {
+          console.log("✅ Đã xử lý xong, dừng thiết lập listener")
           return
         }
 
@@ -816,14 +958,18 @@ export default function SendPackagePage() {
             const pollSnapshot = await getDoc(deliveryInfoRef)
             if (pollSnapshot.exists()) {
               const pollData = pollSnapshot.data()
-              if (isFingerprintVerified(pollData.fingerprintVerified)) {
+              console.log("🔄 Polling check - fingerprintVerified:", pollData.fingerprintVerified, "Type:", typeof pollData.fingerprintVerified)
+              const verified = isFingerprintVerified(pollData.fingerprintVerified)
+              console.log("🔄 Polling check result:", verified)
+              
+              if (verified) {
                 console.log("✅ Polling phát hiện fingerprintVerified = true!")
                 if (pollIntervalId) {
                   clearInterval(pollIntervalId)
                   pollIntervalId = null
                 }
-                // Đóng modal ngay lập tức
-                setShowFingerprintModal(false)
+                // ✅ Cập nhật UI để hiển thị "đã nhận vân tay"
+                setFingerprintReceived(true)
                 await handleFingerprintVerified(unsubscribe)
               }
             }
@@ -860,24 +1006,62 @@ export default function SendPackagePage() {
             console.error("Lỗi kiểm tra trạng thái:", e)
           }
 
-          // Dừng listener
+          // Dừng listener và polling
           unsubscribe()
+          if (pollIntervalId) {
+            clearInterval(pollIntervalId)
+            pollIntervalId = null
+          }
           setFingerprintUnsubscribe(null)
 
-          // Chỉ xóa document nếu chưa được xác thực
+          // Xóa delivery_info nếu chưa được xác thực
           try {
-            await deleteDeliveryInfo(deliveryInfoId)
-            console.log("🗑️ Đã xóa delivery_info do hết thời gian chờ")
+            if (deliveryInfoId) {
+              await deleteDeliveryInfo(deliveryInfoId)
+              console.log("🗑️ Đã xóa delivery_info do hết thời gian chờ")
+            }
           } catch (e) {
             console.error("Lỗi xóa delivery_info:", e)
           }
+
+          // XÓA TRANSACTION nếu đã được tạo (để không còn trong lịch sử)
+          if (newOrderId) {
+            try {
+              const transactionRef = doc(db, "transactions", newOrderId)
+              const transactionSnap = await getDoc(transactionRef)
+              
+              // Chỉ xóa nếu transaction tồn tại và chưa được xác thực vân tay
+              if (transactionSnap.exists()) {
+                const txData = transactionSnap.data()
+                // Chỉ xóa nếu là đơn giữ hàng và chưa được xác thực
+                if (txData.transactionType === "hold" && !txData.fingerprintVerified) {
+                  await deleteDoc(transactionRef)
+                  console.log("🗑️ Đã xóa transaction do hết thời gian chờ vân tay:", newOrderId)
+                } else {
+                  console.log("⚠️ Transaction đã được xác thực hoặc không phải đơn giữ hàng, không xóa")
+                }
+              }
+            } catch (e) {
+              console.error("Lỗi xóa transaction:", e)
+              // Nếu không xóa được (do permission), đánh dấu status là expired
+              try {
+                const transactionRef = doc(db, "transactions", newOrderId)
+                await updateDoc(transactionRef, { status: "expired" })
+                console.log("⚠️ Đã đánh dấu transaction là expired:", newOrderId)
+              } catch (updateError) {
+                console.error("Lỗi đánh dấu transaction expired:", updateError)
+              }
+            }
+          }
+
+          // Reset tủ về available
           await releaseReservedLocker()
 
           // Đóng modal và báo lỗi
           setShowFingerprintModal(false)
           setCurrentDeliveryInfoId(null)
           setFingerprintTimeout(null)
-          showError("Hết thời gian", "Đã hết 60 giây mà không nhận được xác thực vân tay. Vui lòng thử lại.")
+          showError("Hết thời gian", "Đã hết 60 giây mà không nhận được xác thực vân tay. Đơn hàng đã bị hủy. Vui lòng thử lại.")
           setHoldFormData({ lockerSize: "" })
         }, 60000) // 60 giây
 
@@ -1106,16 +1290,38 @@ export default function SendPackagePage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-center text-[#2E3192]">Xác thực vân tay</DialogTitle>
-            <DialogDescription className="text-center pt-4">Mời bạn nhập vân tay ở tủ</DialogDescription>
+            <DialogDescription className="text-center pt-4">
+              {fingerprintReceived ? "Đã nhận được vân tay!" : "Mời bạn nhập vân tay ở tủ"}
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center justify-center py-8">
             <div className="relative">
-              <Fingerprint className="h-24 w-24 text-[#2E3192] animate-pulse" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-32 w-32 rounded-full border-4 border-[#2E3192] border-t-transparent animate-spin" />
-              </div>
+              {fingerprintReceived ? (
+                // ✅ Hiển thị icon checkmark khi đã nhận vân tay
+                <div className="flex items-center justify-center">
+                  <div className="h-24 w-24 rounded-full bg-green-100 flex items-center justify-center">
+                    <svg className="h-16 w-16 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                </div>
+              ) : (
+                // Hiển thị icon fingerprint với animation khi đang chờ
+                <>
+                  <Fingerprint className="h-24 w-24 text-[#2E3192] animate-pulse" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="h-32 w-32 rounded-full border-4 border-[#2E3192] border-t-transparent animate-spin" />
+                  </div>
+                </>
+              )}
             </div>
-            <p className="mt-6 text-sm text-muted-foreground text-center">Vui lòng nhập vân tay cho đến khi đèn LED tắt</p>
+            <p className={`mt-6 text-sm text-center ${fingerprintReceived ? "text-green-600 font-medium" : "text-muted-foreground"}`}>
+              {fingerprintReceived 
+                ? (currentLockerNumber 
+                    ? `Đang xử lý và mở cửa tủ ${currentLockerNumber}...` 
+                    : "Đang xử lý và mở cửa tủ...")
+                : "Vui lòng nhập vân tay cho đến khi đèn LED tắt"}
+            </p>
           </div>
         </DialogContent>
       </Dialog>

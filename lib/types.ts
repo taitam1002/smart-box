@@ -52,7 +52,7 @@ export interface Order {
 
 export interface Notification {
   id: string
-  type: "error" | "warning" | "info" | "customer_action"
+  type: "error" | "warning" | "info" | "customer_action" | "pickup"
   message: string
   lockerId?: string
   orderId?: string

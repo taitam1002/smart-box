@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/toaster'
 import { BrowserExitTracker } from '@/components/browser-exit-tracker'
 import { DeliveryInfoAutoCleanup } from '@/components/delivery-info-auto-cleanup'
+import { PickupNotificationHandler } from '@/components/pickup-notification-handler'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -33,6 +34,7 @@ export default function RootLayout({
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <BrowserExitTracker />
         <DeliveryInfoAutoCleanup />
+        <PickupNotificationHandler />
         {children}
         <Toaster />
         <Analytics />
