@@ -195,6 +195,70 @@ export async function autoCleanupDeliveryInfoWithLockerReset(deliveryInfoId: str
   }
 }
 
+// Xóa delivery_info sau khi đã xác thực vân tay thành công (chỉ khi có fingerprintData)
+export async function cleanupVerifiedDeliveryInfo(deliveryInfoId: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, "delivery_info", deliveryInfoId)
+    const snapshot = await getDoc(docRef)
+
+    if (!snapshot.exists()) {
+      return false
+    }
+
+    const data = snapshot.data()
+
+    const isFingerprintVerified = (value: any) => {
+      if (value === true || value === 1) return true
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase()
+        return normalized === "true" || normalized === "1"
+      }
+      return !!value
+    }
+
+    // ✅ QUAN TRỌNG: Chỉ xóa khi có fingerprintData, đã xác thực vân tay và có orderId
+    if (data.deliveryType === "giu" && 
+        data.fingerprintData && // Phải có fingerprintData
+        isFingerprintVerified(data.fingerprintVerified) && 
+        data.orderId) {
+      await deleteDoc(docRef)
+      console.log(`✅ Đã xóa delivery_info ${deliveryInfoId} sau khi xác thực vân tay thành công (orderId: ${data.orderId})`)
+      return true
+    }
+
+    return false
+  } catch (error) {
+    console.error(`❌ Lỗi cleanup verified delivery_info ${deliveryInfoId}:`, error)
+    return false
+  }
+}
+
+// Xóa delivery_info cho đơn gửi hàng SMS khi receive = true
+export async function cleanupReceivedDeliveryInfo(deliveryInfoId: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, "delivery_info", deliveryInfoId)
+    const snapshot = await getDoc(docRef)
+
+    if (!snapshot.exists()) {
+      return false
+    }
+
+    const data = snapshot.data()
+
+    // Chỉ xóa nếu là đơn gửi hàng (SMS) và đã nhận hàng (receive = true) và có orderId
+    if (data.deliveryType === "gui" && data.receive === true && data.orderId) {
+      await deleteDoc(docRef)
+      console.log(`✅ Đã xóa delivery_info ${deliveryInfoId} sau khi nhận hàng (receive = true, orderId: ${data.orderId})`)
+      return true
+    }
+
+    return false
+  } catch (error) {
+    console.error(`❌ Lỗi cleanup received delivery_info ${deliveryInfoId}:`, error)
+    return false
+  }
+}
+
 // Lấy delivery_info của một người dùng (để tạo transaction nếu chưa có)
 export async function getUserDeliveryInfo(userId: string): Promise<DeliveryInfo[]> {
   const q = query(
@@ -818,6 +882,23 @@ export async function pickupPackage(transactionId: string) {
       door: "open", // Mở cửa khi nhận hàng
       lastUpdated: new Date()
     });
+
+    // ✅ Cập nhật receive = true cho delivery_info tương ứng (cho đơn gửi hàng SMS)
+    try {
+      const deliveryInfoQuery = query(
+        collection(db, "delivery_info"),
+        where("orderId", "==", transactionId),
+        where("deliveryType", "==", "gui")
+      )
+      const deliveryInfoSnapshot = await getDocs(deliveryInfoQuery)
+      
+      for (const docSnap of deliveryInfoSnapshot.docs) {
+        await updateDeliveryInfo(docSnap.id, { receive: true })
+        console.log(`✅ Đã cập nhật receive = true cho delivery_info ${docSnap.id}`)
+      }
+    } catch (e) {
+      console.error("Lỗi cập nhật receive cho delivery_info:", e)
+    }
 
     // ✅ Gửi thông báo cho khách hàng khi nhận hàng thành công
     try {

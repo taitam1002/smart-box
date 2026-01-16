@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCurrentUser } from "@/lib/auth"
-import { saveTransaction, getLockers, updateLockerStatus, saveNotification, findUserByEmail, saveDeliveryInfo, updateDeliveryInfo, deleteDeliveryInfo, cleanupDeliveryInfo, autoCleanupDeliveryInfoWithLockerReset } from "@/lib/firestore-actions"
+import { saveTransaction, getLockers, updateLockerStatus, saveNotification, findUserByEmail, saveDeliveryInfo, updateDeliveryInfo, deleteDeliveryInfo, cleanupDeliveryInfo, autoCleanupDeliveryInfoWithLockerReset, cleanupVerifiedDeliveryInfo } from "@/lib/firestore-actions"
 import { SMSService } from "@/lib/sms-service"
 import { Package, Archive, Fingerprint } from "lucide-react"
 import { db } from "@/lib/firebase"
@@ -799,6 +799,31 @@ export default function SendPackagePage() {
               console.log("✅ Đã gửi thông báo giữ hàng cho tất cả customerIds:", Array.from(customerIds))
             } catch (e) {
               console.error("❌ Lỗi gửi thông báo giữ hàng cho khách hàng:", e)
+            }
+
+            // ✅ Xóa delivery_info sau khi đã xử lý xong (có fingerprintData, fingerprintVerified = true, và orderId)
+            // Đợi một chút để đảm bảo orderId đã được cập nhật vào delivery_info
+            if (deliveryInfoId) {
+              try {
+                await new Promise(resolve => setTimeout(resolve, 1000))
+                
+                // Kiểm tra lại để đảm bảo có fingerprintData và orderId
+                const deliveryInfoRef = doc(db, "delivery_info", deliveryInfoId)
+                const finalCheck = await getDoc(deliveryInfoRef)
+                if (finalCheck.exists()) {
+                  const finalData = finalCheck.data()
+                  // Chỉ xóa nếu có fingerprintData, đã xác thực và có orderId
+                  if (finalData.fingerprintData && 
+                      finalData.fingerprintVerified === true && 
+                      finalData.orderId) {
+                    await cleanupVerifiedDeliveryInfo(deliveryInfoId)
+                    console.log("✅ Đã xóa delivery_info sau khi xác thực vân tay thành công")
+                  }
+                }
+              } catch (e) {
+                console.error("Lỗi xóa delivery_info sau khi xác thực vân tay:", e)
+                // Không throw error, để không ảnh hưởng đến flow chính
+              }
             }
 
             // Hiển thị thông báo thành công

@@ -90,7 +90,9 @@ export interface DeliveryInfo {
   orderId?: string // ID của transaction nếu có
   accessCode?: string // Mã lấy hàng (cho đơn gửi hàng)
   fingerprintVerified?: boolean // Trạng thái xác thực vân tay
+  fingerprintData?: string // Dữ liệu vân tay từ ESP32
   smsSent?: boolean // Trạng thái đã gửi SMS
+  receive?: boolean // Trạng thái đã nhận hàng (cho đơn gửi hàng SMS)
   deliveryType: "gui" | "giu" // "gui" = gửi hàng, "giu" = giữ hàng (required)
   createdAt: Date
 }

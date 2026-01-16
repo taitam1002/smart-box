@@ -3,78 +3,89 @@
 import { useEffect } from "react"
 import { db } from "@/lib/firebase"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
-import { autoCleanupDeliveryInfoWithLockerReset } from "@/lib/firestore-actions"
+import { autoCleanupDeliveryInfoWithLockerReset, cleanupVerifiedDeliveryInfo, cleanupReceivedDeliveryInfo } from "@/lib/firestore-actions"
 
 /**
  * Component tự động theo dõi delivery_info collection
- * Khi ESP gửi fingerprintData lên, tự động xóa document và reset tủ
+ * - Đơn giữ hàng (vân tay): Xóa khi có fingerprintData, fingerprintVerified = true, và orderId
+ * - Đơn gửi hàng (SMS): Xóa khi receive = true và orderId
  */
 export function DeliveryInfoAutoCleanup() {
   useEffect(() => {
     console.log("🔍 Bắt đầu theo dõi delivery_info collection để tự động xóa và reset tủ...")
 
-    // Query chỉ lấy đơn giữ hàng (deliveryType === "giu")
-    const deliveryInfoQuery = query(
+    // Query cho đơn giữ hàng (deliveryType === "giu")
+    const holdDeliveryQuery = query(
       collection(db, "delivery_info"),
       where("deliveryType", "==", "giu")
     )
 
-    // Set để theo dõi các document đã xử lý (tránh xử lý nhiều lần)
+    // Query cho đơn gửi hàng SMS (deliveryType === "gui")
+    const smsDeliveryQuery = query(
+      collection(db, "delivery_info"),
+      where("deliveryType", "==", "gui")
+    )
+
     const processedDocs = new Set<string>()
 
-    const unsubscribe = onSnapshot(
-      deliveryInfoQuery,
+    const isFingerprintVerified = (value: any) => {
+      if (value === true || value === 1) return true
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase()
+        return normalized === "true" || normalized === "1"
+      }
+      return !!value
+    }
+
+    // Listener cho đơn giữ hàng (vân tay)
+    const unsubscribeHold = onSnapshot(
+      holdDeliveryQuery,
       async (snapshot) => {
-        // Xử lý các document mới hoặc đã thay đổi
         for (const docSnap of snapshot.docs) {
           const docId = docSnap.id
           const data = docSnap.data()
 
-          // Bỏ qua nếu đã xử lý
           if (processedDocs.has(docId)) {
             continue
           }
 
-          // Kiểm tra nếu document có fingerprintData (ESP đã gửi lên)
-          // ✅ QUAN TRỌNG: CHỈ xóa nếu CHƯA được xác thực vân tay
-          // Nếu fingerprintVerified = true, document đã được xác thực thành công → KHÔNG xóa
-          const isFingerprintVerified = (value: any) => {
-            if (value === true || value === 1) return true
-            if (typeof value === "string") {
-              const normalized = value.trim().toLowerCase()
-              return normalized === "true" || normalized === "1"
-            }
-            return !!value
-          }
-
+          // Xóa nếu có fingerprintData nhưng chưa xác thực (lỗi timeout)
           if (data.fingerprintData && !isFingerprintVerified(data.fingerprintVerified)) {
-            console.log(`📡 Phát hiện fingerprintData trong document ${docId}, bắt đầu xử lý...`)
-            
-            // Đánh dấu đã xử lý ngay để tránh xử lý nhiều lần
+            console.log(`📡 Phát hiện fingerprintData trong document ${docId} nhưng chưa xác thực, bắt đầu xử lý...`)
             processedDocs.add(docId)
 
             try {
-              // Tự động xóa document và reset tủ
               const success = await autoCleanupDeliveryInfoWithLockerReset(docId)
-              
               if (success) {
                 console.log(`✅ Đã tự động xóa delivery_info ${docId} và reset tủ thành công`)
               } else {
-                console.log(`ℹ️ Document ${docId} không cần xử lý hoặc đã bị xóa`)
-                // Xóa khỏi processedDocs để có thể xử lý lại nếu cần
                 processedDocs.delete(docId)
               }
             } catch (error) {
               console.error(`❌ Lỗi khi xử lý delivery_info ${docId}:`, error)
-              // Xóa khỏi processedDocs để có thể thử lại
               processedDocs.delete(docId)
             }
-          } else if (data.fingerprintData && isFingerprintVerified(data.fingerprintVerified)) {
-            console.log(`⚠️ Document ${docId} có fingerprintData nhưng đã được xác thực (fingerprintVerified = true), bỏ qua xóa`)
+          } 
+          // ✅ Xóa nếu có fingerprintData, đã xác thực vân tay và có orderId
+          else if (data.fingerprintData && isFingerprintVerified(data.fingerprintVerified) && data.orderId) {
+            console.log(`🗑️ Phát hiện document ${docId} có fingerprintData, đã xác thực vân tay và có orderId, tiến hành xóa...`)
+            processedDocs.add(docId)
+
+            try {
+              const success = await cleanupVerifiedDeliveryInfo(docId)
+              if (success) {
+                console.log(`✅ Đã xóa delivery_info ${docId} sau khi xác thực vân tay thành công`)
+              } else {
+                processedDocs.delete(docId)
+              }
+            } catch (error) {
+              console.error(`❌ Lỗi xóa delivery_info ${docId}:`, error)
+              processedDocs.delete(docId)
+            }
           }
         }
 
-        // Dọn dẹp processedDocs: xóa các document không còn trong snapshot
+        // Dọn dẹp processedDocs
         const currentDocIds = new Set(snapshot.docs.map(doc => doc.id))
         for (const docId of processedDocs) {
           if (!currentDocIds.has(docId)) {
@@ -83,13 +94,58 @@ export function DeliveryInfoAutoCleanup() {
         }
       },
       (error) => {
-        console.error("❌ Lỗi listener delivery_info:", error)
+        console.error("❌ Lỗi listener delivery_info (giữ hàng):", error)
+      }
+    )
+
+    // Listener cho đơn gửi hàng SMS
+    const unsubscribeSMS = onSnapshot(
+      smsDeliveryQuery,
+      async (snapshot) => {
+        for (const docSnap of snapshot.docs) {
+          const docId = docSnap.id
+          const data = docSnap.data()
+
+          if (processedDocs.has(docId)) {
+            continue
+          }
+
+          // ✅ Chỉ xóa khi receive = true và có orderId
+          if (data.receive === true && data.orderId) {
+            console.log(`🗑️ Phát hiện document ${docId} đã nhận hàng (receive = true), tiến hành xóa...`)
+            processedDocs.add(docId)
+
+            try {
+              const success = await cleanupReceivedDeliveryInfo(docId)
+              if (success) {
+                console.log(`✅ Đã xóa delivery_info ${docId} sau khi nhận hàng thành công`)
+              } else {
+                processedDocs.delete(docId)
+              }
+            } catch (error) {
+              console.error(`❌ Lỗi xóa delivery_info ${docId}:`, error)
+              processedDocs.delete(docId)
+            }
+          }
+        }
+
+        // Dọn dẹp processedDocs
+        const currentDocIds = new Set(snapshot.docs.map(doc => doc.id))
+        for (const docId of processedDocs) {
+          if (!currentDocIds.has(docId)) {
+            processedDocs.delete(docId)
+          }
+        }
+      },
+      (error) => {
+        console.error("❌ Lỗi listener delivery_info (gửi hàng SMS):", error)
       }
     )
 
     return () => {
       console.log("🛑 Dừng theo dõi delivery_info collection")
-      unsubscribe()
+      unsubscribeHold()
+      unsubscribeSMS()
     }
   }, [])
 
